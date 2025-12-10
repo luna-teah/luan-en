@@ -8,8 +8,7 @@ import datetime
 from gtts import gTTS
 from io import BytesIO
 
-# --- 0. 🛑 核武器级修复：强制生成配置文件 ---
-# 这段代码会自动在云端服务器创建一个配置文件，强制锁定为"浅色模式"
+# --- 0. 🛑 强制配置文件 ---
 if not os.path.exists(".streamlit"):
     os.makedirs(".streamlit")
 with open(".streamlit/config.toml", "w") as f:
@@ -24,31 +23,18 @@ font="sans serif"
 ''')
 
 # --- 1. 全局配置 ---
-st.set_page_config(page_title="Luna Pro 单词通 V9.1", page_icon="🔥", layout="wide")
+st.set_page_config(page_title="Luna Pro 单词通 V9.3", page_icon="🎯", layout="wide")
 
-# --- 2. 🎨 UI 美学工程 (双重强制) ---
+# --- 2. 🎨 UI 美学工程 ---
 def local_css():
     st.markdown("""
     <style>
-    /* 强制覆盖全局变量 (CSS Variables) */
-    :root {
-        --primary-color: #6c5ce7;
-        --background-color: #ffffff;
-        --secondary-background-color: #f0f2f6;
-        --text-color: #2d3436;
-    }
-    
-    /* 暴力锁定背景颜色 */
+    :root { --primary-color: #6c5ce7; --background-color: #ffffff; --secondary-background-color: #f0f2f6; --text-color: #2d3436; }
     [data-testid="stAppViewContainer"] { background-color: #f4f6f9 !important; }
     [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
     [data-testid="stSidebar"] { background-color: #ffffff !important; }
+    h1, h2, h3, h4, h5, h6, p, li, span, div, label { color: #2d3436 !important; }
     
-    /* 文字颜色强制深色 */
-    h1, h2, h3, h4, h5, h6, p, li, span, div, label {
-        color: #2d3436 !important;
-    }
-    
-    /* 单词主卡片 */
     .main-card {
         background: #ffffff !important;
         padding: 40px;
@@ -58,26 +44,24 @@ def local_css():
         margin-bottom: 25px;
         border-top: 6px solid #6c5ce7;
     }
-    .word-text {
-        font-family: 'Arial', sans-serif;
-        font-size: 3.5em;
-        font-weight: 800;
-        color: #2d3436 !important;
-        margin: 0;
-    }
+    .word-text { font-family: 'Arial', sans-serif; font-size: 3.5em; font-weight: 800; color: #2d3436 !important; margin: 0; }
     .phonetic-text { color: #636e72 !important; font-size: 1.2em; margin-bottom: 15px; }
     .meaning-text { font-size: 1.5em; color: #0984e3 !important; font-weight: 600; }
     
-    /* 标签 */
     .tag-container { display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
     .tag-syn { background-color: #e3f9e5 !important; color: #00b894 !important; padding: 5px 15px; border-radius: 20px; border: 1px solid #b2bec3; }
     .tag-ant { background-color: #ffeaa7 !important; color: #d63031 !important; padding: 5px 15px; border-radius: 20px; border: 1px solid #b2bec3; }
     
-    /* 例句盒子 */
     .sent-box { background: #ffffff !important; border-left: 4px solid #74b9ff; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     
-    /* 修复按钮文字颜色 (Streamlit按钮文字默认是跟随主题的，这里不做强制，以免变成黑底黑字) */
-    
+    /* V9.3 新增：图片容器样式，支持 GIF */
+    .memory-image-container img {
+        width: 100%;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        object-fit: cover;
+        max-height: 400px; /* 限制最大高度，防止图太长 */
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -126,16 +110,31 @@ def play_audio(text):
     except:
         st.toast("⚠️ 语音生成失败")
 
-def show_ai_image(prompt_text):
-    if not prompt_text or pd.isna(prompt_text): return
+# --- 🔥 V9.3 核心升级：精准记忆锚点展示函数 ---
+def show_memory_anchor(prompt_text, word_info=""):
     prompt_str = str(prompt_text).strip()
+    
+    # 1. 优先检查是否是用户提供的精确链接 (支持 JPG, PNG, GIF)
     if prompt_str.startswith("http"):
-        st.image(prompt_str, use_container_width=True)
-    else:
-        ai_url = f"https://image.pollinations.ai/prompt/{prompt_str}"
-        st.image(ai_url, caption=f"🎨 AI Vision", use_container_width=True)
+        # 使用 Markdown 来更好地支持 GIF 动图显示
+        st.markdown(f"""
+        <div class="memory-image-container">
+            <img src="{prompt_str}" alt="Memory Anchor">
+        </div>
+        <p style="text-align: center; color: #666; font-size: 0.9em;">🎯 精准记忆锚点 (Manual Select)</p>
+        """, unsafe_allow_html=True)
+        return
 
-# --- 4. 日期处理工具 (打卡核心) ---
+    # 2. 如果没有链接，再尝试用 AI 生成 (作为降级备份)
+    # 只有当有描述文字时才生成，避免生成无意义的图
+    if prompt_str and prompt_str != 'nan':
+        ai_url = f"https://image.pollinations.ai/prompt/{prompt_str}, professional illustration"
+        st.image(ai_url, caption=f"🤖 AI 辅助绘图 (仅供参考)", use_container_width=True)
+    else:
+        # 如果什么都没填，显示一个占位提示
+        st.info("💡 Tip: 在 Excel 的 [语境图描述] 列粘贴一个图片或动图网址，这里就能显示你的专属记忆图像了！")
+
+# --- 4. 日期处理 ---
 def get_today_str():
     return datetime.date.today().strftime("%Y-%m-%d")
 
@@ -147,11 +146,9 @@ if 'logged_in' not in st.session_state:
 def login_system():
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
-        st.markdown("<h1 style='text-align: center; color: #2d3436 !important;'>🔥 Luna Pro</h1>", unsafe_allow_html=True)
-        
+        st.markdown("<h1 style='text-align: center; color: #2d3436 !important;'>🎯 Luna Pro V9.3</h1>", unsafe_allow_html=True)
         tab1, tab2 = st.tabs(["🔑 登录", "📝 注册"])
         users = load_user_db()
-        
         with tab1:
             u = st.text_input("用户名", key="l_u")
             p = st.text_input("密码", type="password", key="l_p")
@@ -162,7 +159,6 @@ def login_system():
                     st.rerun()
                 else:
                     st.error("账号或密码错误")
-        
         with tab2:
             nu = st.text_input("新用户名", key="r_u")
             np = st.text_input("设置密码", type="password", key="r_p")
@@ -170,17 +166,10 @@ def login_system():
                 if nu in users:
                     st.warning("用户已存在")
                 elif nu and np:
-                    # 初始化包含打卡数据的结构
                     users[nu] = {
                         "password": make_hashes(np), 
                         "progress": {},
-                        "stats": {
-                            "streak": 0,
-                            "last_active_date": "",
-                            "daily_goal": 10,
-                            "today_count": 0,
-                            "last_count_date": ""
-                        }
+                        "stats": {"streak": 0, "last_active_date": "", "daily_goal": 10, "today_count": 0, "last_count_date": ""}
                     }
                     save_user_db(users)
                     st.success("注册成功！")
@@ -192,52 +181,38 @@ if not st.session_state['logged_in']:
 else:
     users = load_user_db()
     current_user = st.session_state['username']
-    
-    # 兼容旧数据：如果用户没有stats字段，补上
     if 'stats' not in users[current_user]:
-        users[current_user]['stats'] = {
-            "streak": 0, "last_active_date": "", 
-            "daily_goal": 10, "today_count": 0, "last_count_date": ""
-        }
+        users[current_user]['stats'] = {"streak": 0, "last_active_date": "", "daily_goal": 10, "today_count": 0, "last_count_date": ""}
     
     user_stats = users[current_user]['stats']
     progress = users[current_user].get('progress', {})
     sheets_data = load_all_sheets()
 
-    # === 侧边栏 (个人中心 & 设置) ===
     with st.sidebar:
         st.title(f"Hi, {current_user}")
         
-        # 🔥 打卡数据展示
-        st.markdown("### 🔥 每日挑战")
-        
-        # 逻辑：检查今天是否是新的一天
         today_str = get_today_str()
         if user_stats.get('last_count_date') != today_str:
             user_stats['today_count'] = 0
             user_stats['last_count_date'] = today_str
             save_user_db(users) 
-            
+        
         goal = user_stats.get('daily_goal', 10)
         done = user_stats.get('today_count', 0)
         
-        # 逻辑：检查是否断签
         last_active = user_stats.get('last_active_date', '')
         yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         streak = user_stats.get('streak', 0)
-        
         display_streak = streak
-        # 如果上次活跃不是今天，也不是昨天，且不是空（新号），说明断签了
         if last_active != today_str and last_active != yesterday and last_active != "":
             display_streak = 0 
 
+        st.markdown("### 🔥 每日挑战")
         c_s1, c_s2 = st.columns(2)
         c_s1.metric("坚持天数", f"{display_streak} 天")
         c_s2.metric("今日单词", f"{done} / {goal}")
         st.progress(min(done / goal, 1.0))
-        
-        if done >= goal:
-            st.success("🎉 目标达成！")
+        if done >= goal: st.success("🎉 目标达成！")
 
         with st.expander("⚙️ 设置每日目标"):
             new_goal = st.slider("每天背多少个？", 5, 50, goal)
@@ -247,7 +222,6 @@ else:
                 st.rerun()
 
         st.markdown("---")
-        
         if st.button("🚪 退出登录", use_container_width=True):
             st.session_state['logged_in'] = False
             st.rerun()
@@ -258,14 +232,11 @@ else:
 
         cat_list = list(sheets_data.keys())
         sel_cat = st.selectbox("📚 单词书架", cat_list)
-        
         df_cur = sheets_data[sel_cat]
         mode = st.radio("模式", ["📖 沉浸背词", "🔄 智能复习", "📊 数据中心"])
 
-    # === 功能区 ===
     if mode == "📊 数据中心":
         st.markdown("<h1 style='color:#2d3436 !important'>📊 学习数据</h1>", unsafe_allow_html=True)
-        st.info(f"连续打卡: {display_streak} 天 | 今日已学: {done} 个")
         st.bar_chart({"今日": done, "目标": goal})
 
     elif mode == "📖 沉浸背词":
@@ -279,7 +250,6 @@ else:
             w_str = new_ws[0]
             row = df_cur[df_cur['单词 (Word)'] == w_str].iloc[0]
             
-            # 卡片显示
             syns = str(row.get('近义词 (Synonyms)', '')).replace('nan', '')
             ants = str(row.get('反义词 (Antonyms)', '')).replace('nan', '')
             tags_html = ""
@@ -303,8 +273,12 @@ else:
             with c_left:
                 st.info(f"🧠 **脑洞**: {row['脑洞联想 (Mnemonic)']}")
                 st.caption(f"🌲 **词源**: {row['词源/逻辑 (Etymology)']}")
+            
             with c_right:
-                show_ai_image(row.get('语境图描述 (ImagePrompt)', ''))
+                # --- 🔥 V9.3 调用新的展示函数 ---
+                raw_prompt = str(row.get('语境图描述 (ImagePrompt)', '')).replace('nan', '').strip()
+                show_memory_anchor(raw_prompt, word_info=w_str)
+                # -------------------------------
 
             st.markdown("<h3 style='color:#2d3436 !important'>🗣️ 真实语境</h3>", unsafe_allow_html=True)
             for i in range(1, 4):
@@ -315,26 +289,17 @@ else:
                         if st.button("🎧", key=f"btn_s{i}"): play_audio(str(row[s_key]))
 
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            # --- 🔥 打卡逻辑 ---
             if st.button("✅ 我学会了 (打卡 +1)", type="primary", use_container_width=True):
-                # 更新单词
                 users[current_user]['progress'][w_str] = {"level": 1, "next_review": get_next_review_time(1)}
-                
-                # 更新打卡数据
                 if users[current_user]['stats']['last_count_date'] == today_str:
                     users[current_user]['stats']['today_count'] += 1
                 else:
                     users[current_user]['stats']['today_count'] = 1
                     users[current_user]['stats']['last_count_date'] = today_str
                 
-                # 更新连胜
-                if last_active == today_str:
-                    pass
-                elif last_active == yesterday:
-                    users[current_user]['stats']['streak'] += 1
-                else:
-                    users[current_user]['stats']['streak'] = 1
+                if last_active == today_str: pass
+                elif last_active == yesterday: users[current_user]['stats']['streak'] += 1
+                else: users[current_user]['stats']['streak'] = 1
                 
                 users[current_user]['stats']['last_active_date'] = today_str
                 save_user_db(users)
@@ -357,8 +322,12 @@ else:
             
             if row is not None:
                 st.markdown(f"# 复习: {w_str}")
-                with st.expander("🔍 查看提示"):
+                with st.expander("查看提示"):
                     st.info(row['中文 (Meaning)'])
+                    # 复习模式也调用新函数
+                    raw_prompt = str(row.get('语境图描述 (ImagePrompt)', '')).replace('nan', '').strip()
+                    show_memory_anchor(raw_prompt, word_info=w_str)
+
                 c1, c2 = st.columns(2)
                 with c1:
                     if st.button("❌ 忘了", use_container_width=True):
@@ -372,7 +341,6 @@ else:
                         save_user_db(users)
                         st.rerun()
             else:
-                 # 容错：如果单词在Excel里被删了
                  del users[current_user]['progress'][w_str]
                  save_user_db(users)
                  st.rerun()
