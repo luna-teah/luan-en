@@ -1,38 +1,50 @@
 import streamlit as st
 import utils
-import os
+import secrets # 用于生成安全密钥
 
-# --- 0. 暴力强制生成配置文件 (解决默认黑夜模式) ---
-# 这一步非常关键，它会告诉 Streamlit "必须用亮色主题"
-streamlit_config = """
-[theme]
-base="light"
-primaryColor="#4F46E5"
-backgroundColor="#F3F4F6"
-secondaryBackgroundColor="#FFFFFF"
-textColor="#1F2937"
-font="sans serif"
-"""
-if not os.path.exists(".streamlit"):
-    os.makedirs(".streamlit")
-# 每次运行都覆盖写入，确保配置生效
-with open(".streamlit/config.toml", "w") as f:
-    f.write(streamlit_config)
+st.set_page_config(page_title="Luna Pro 主页", page_icon="💎", layout="wide")
 
-# --- 1. 页面初始化 ---
-st.set_page_config(page_title="Luna Pro V22", page_icon="💎", layout="wide")
-utils.local_css() # 加载纠色 CSS
+# 加载样式
+utils.local_css()
 
-# --- 2. 登录逻辑 ---
+# ==========================================
+# 🔐 核心功能：自动登录检查 (Auto-Login)
+# ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+# 1. 如果没登录，先看看地址栏有没有“通关令牌”
+if not st.session_state['logged_in']:
+    try:
+        # 获取URL参数
+        query_params = st.query_params
+        token = query_params.get("token")
+        
+        if token:
+            db = utils.get_db()
+            if db is not None:
+                # 去数据库查查这个令牌是谁的
+                user = db.users.find_one({"session_token": token})
+                if user:
+                    # 找到了！自动登录
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = user['_id']
+                    st.toast(f"🎉 欢迎回来, {user['_id']} (自动登录成功)")
+    except:
+        pass # 出错就不自动登录，走正常流程
+
+# ==========================================
+# 🚪 登录页面 (Login Page)
+# ==========================================
 def login_page():
-    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>💎 Luna Pro V22</h1>", unsafe_allow_html=True)
+    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>💎 Luna Pro V26</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;color:#666'>自动保存进度 · 永久记住账号</p>", unsafe_allow_html=True)
+    
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         tab1, tab2 = st.tabs(["登录", "注册"])
         db = utils.get_db()
+        
         with tab1:
             u = st.text_input("用户名", key="l1")
             p = st.text_input("密码", type="password", key="l2")
@@ -40,22 +52,32 @@ def login_page():
                 if db is not None:
                     user = db.users.find_one({"_id": u})
                     if user and utils.check_hashes(p, user['password']):
+                        # ✅ 登录成功：生成令牌，保存到数据库
+                        token = secrets.token_hex(16)
+                        db.users.update_one({"_id": u}, {"$set": {"session_token": token}})
+                        
+                        # 把令牌放到 URL 里，这样下次刷新就不会退出了
+                        st.query_params["token"] = token
+                        
                         st.session_state['logged_in'] = True
                         st.session_state['username'] = u
                         st.rerun()
                     else: st.error("密码错误")
-                else: st.error("数据库未连接")
+                else: st.error("数据库连接失败")
+        
         with tab2:
             nu = st.text_input("新用户名", key="r1")
             np = st.text_input("设置密码", type="password", key="r2")
             if st.button("✨ 注册", use_container_width=True):
                 if db and nu:
                     if not db.users.find_one({"_id": nu}):
-                        db.users.insert_one({"_id": nu, "password": utils.make_hashes(np), "progress": {}})
-                        st.success("注册成功！")
+                        db.users.insert_one({"_id": nu, "password": utils.make_hashes(np), "progress": {}, "session_token": ""})
+                        st.success("注册成功！请登录。")
                     else: st.warning("用户已存在")
 
-# --- 3. 导航大厅 ---
+# ==========================================
+# 🏠 主大厅 (Main Hall)
+# ==========================================
 if not st.session_state['logged_in']:
     login_page()
 else:
@@ -92,6 +114,12 @@ else:
         if st.button("Go Add", use_container_width=True, type="secondary"): st.switch_page("pages/3_🚀_Add.py")
     
     st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # 退出登录：必须清除令牌，否则会自动登录回来
     if st.button("🚪 退出登录"):
+        db = utils.get_db()
+        if db:
+            db.users.update_one({"_id": st.session_state['username']}, {"$set": {"session_token": ""}})
+        st.query_params.clear() # 清空URL参数
         st.session_state.clear()
         st.rerun()
