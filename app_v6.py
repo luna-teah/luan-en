@@ -4,18 +4,18 @@ import time
 import datetime
 import json
 import random
-import hashlib  # ✅ 修复1: 补上了加密工具
-import os       
-import secrets  # ✅ 新增: 用于生成自动登录令牌
+import hashlib  # ✅ 修复：补上了加密工具
+import os       # ✅ 修复：补上了系统工具
+import secrets  # ✅ 修复：补上了令牌工具
 from gtts import gTTS
 from io import BytesIO
 import pymongo
 from openai import OpenAI
 
 # --- 0. 全局配置 ---
-st.set_page_config(page_title="Luna Pro V14.4", page_icon="💎", layout="centered")
+st.set_page_config(page_title="Luna Pro V14.5", page_icon="💎", layout="centered")
 
-# 强制生成配置文件 (浅色模式)
+# 强制生成配置文件
 if not os.path.exists(".streamlit"):
     os.makedirs(".streamlit")
 with open(".streamlit/config.toml", "w") as f:
@@ -81,14 +81,21 @@ def get_next_review_time(level):
     intervals = [0, 86400, 259200, 604800, 1296000, 2592000]
     return time.time() + (intervals[level] if level < len(intervals) else 2592000)
 
-# --- 4. 核心：智能查词 (已修复报错) ---
+# --- 4. 核心：智能查词 (含错误保护) ---
 def smart_fetch_word_data(word):
     db = get_db()
-    if db is None: return None  # ✅ 修复2: 正确的数据库判断方式
+    # ✅ 修复：正确的数据库判断
+    if db is None: 
+        st.error("数据库连接失败，请检查 Secrets 配置")
+        return None
     
-    # 1. 查缓存
-    cached = db.library.find_one({"word": word.lower().strip()})
-    if cached: return cached
+    # 1. 查缓存 (Cache First)
+    try:
+        cached = db.library.find_one({"word": word.lower().strip()})
+        if cached: return cached
+    except Exception as e:
+        st.error(f"数据库查询出错: {e}")
+        return None
     
     # 2. AI 生成
     if ai_client:
@@ -118,15 +125,18 @@ def smart_fetch_word_data(word):
             data = json.loads(response.choices[0].message.content)
             data['word'] = word.lower().strip()
             data['created_at'] = datetime.datetime.now()
+            
+            # 存入数据库
             db.library.insert_one(data)
             return data
+            
         except Exception as e:
-            # 优雅处理余额不足等错误
-            err_str = str(e)
-            if "402" in err_str or "Insufficient Balance" in err_str:
-                st.error("⚠️ AI 生成失败：DeepSeek 账户余额不足。请前往充值或检查 API Key。")
+            err_msg = str(e)
+            # ✅ 修复：针对欠费的优雅提示
+            if "Insufficient Balance" in err_msg or "402" in err_msg:
+                st.warning("⚠️ AI 余额不足：请给 DeepSeek 充值（哪怕1块钱）。暂无法自动生成，但您可以手动添加。")
             else:
-                st.error(f"AI 生成出错: {e}")
+                st.error(f"AI 生成出错: {err_msg}")
             return None
     return None
 
@@ -135,25 +145,20 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['username'] = ''
 
-# 🔥 自动登录检查 🔥
+# 🔥 自动登录检查
 if not st.session_state['logged_in']:
-    # 检查 URL 里有没有 token
     try:
-        # 兼容不同版本的 Streamlit 参数获取方式
-        params = st.query_params 
+        params = st.query_params
         token = params.get("token")
-        
         if token:
             db = get_db()
             if db is not None:
-                # 拿 token 去数据库找用户
                 user = db.users.find_one({"session_token": token})
                 if user:
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = user['_id']
-                    st.toast(f"👋 欢迎回来, {user['_id']} (自动登录)")
-    except:
-        pass
+                    st.toast(f"👋 欢迎回来, {user['_id']}")
+    except: pass
 
 def login_page():
     st.markdown("<br><br><h1 style='text-align: center; color: #58cc02;'>💎 Luna Pro</h1>", unsafe_allow_html=True)
@@ -169,10 +174,10 @@ def login_page():
             if db is not None:
                 user = db.users.find_one({"_id": u})
                 if user and check_hashes(p, user['password']):
-                    # ✅ 登录成功：生成令牌，保存到数据库和URL
+                    # 生成自动登录令牌
                     token = secrets.token_hex(16)
                     db.users.update_one({"_id": u}, {"$set": {"session_token": token}})
-                    st.query_params["token"] = token # 设置 URL 参数
+                    st.query_params["token"] = token 
                     
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = u
@@ -188,8 +193,8 @@ def login_page():
                 if db.users.find_one({"_id": nu}): st.warning("用户名已存在")
                 else:
                     db.users.insert_one({
-                        "_id": nu, "password": make_hashes(np), "progress": {},
-                        "stats": {"streak": 0}, "session_token": ""
+                        "_id": nu, "password": make_hashes(np), 
+                        "progress": {}, "stats": {"streak": 0}, "session_token": ""
                     })
                     st.success("注册成功！请登录。")
 
@@ -204,8 +209,7 @@ else:
         st.title(f"Hi, {username}")
         menu = st.radio("导航", ["🔎 极速查词", "🧠 沉浸复习", "📊 数据中心"])
         st.divider()
-        if st.button("退出登录 (清除自动登录)"):
-            # 退出时，清除数据库里的 token 和 URL 参数
+        if st.button("退出登录"):
             if db is not None:
                 db.users.update_one({"_id": username}, {"$set": {"session_token": ""}})
             st.query_params.clear()
@@ -250,10 +254,10 @@ else:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("⭐ 加入我的复习计划", type="primary", use_container_width=True):
-                    if db is not None:
-                        db.users.update_one({"_id": username},{"$set": {f"progress.{data['word']}": {"level": 0, "next_review": 0}}})
-                        st.toast(f"✅ {data['word']} 已添加！")
-            else: pass # 错误信息已在函数内处理
+                    db.users.update_one({"_id": username},{"$set": {f"progress.{data['word']}": {"level": 0, "next_review": 0}}})
+                    st.toast(f"✅ {data['word']} 已添加！")
+            
+            # 如果 data 是 None，错误信息已经在 smart_fetch_word_data 里显示了
 
     # --- 🧠 沉浸复习 ---
     elif menu == "🧠 沉浸复习":
