@@ -30,13 +30,10 @@ target_cat = sel.split(" (")[0] if "(" in sel else sel
 
 pool = [w for w in all_words if w['word'] not in u_prog and (target_cat=="All" or str(w.get('category','')).strip()==target_cat)]
 
-# --- 万能清洗函数 (修复 AttributeError) ---
+# --- 万能清洗 (修复乱码) ---
 def format_meaning(text):
     if text is None: return "No meaning"
-    # 如果是字典对象
-    if isinstance(text, dict):
-        return f"{text.get('simple','')}; {text.get('business','')}"
-    # 如果是字符串
+    if isinstance(text, dict): return f"{text.get('simple','')}; {text.get('business','')}"
     s_text = str(text).strip()
     if s_text.startswith("{") and "simple" in s_text:
         try:
@@ -49,9 +46,8 @@ if not pool:
     st.success("Done!")
 else:
     w_raw = pool[0]
-    # Auto-fix old data
-    sentences = w_raw.get('sentences')
-    if not sentences or not isinstance(sentences, list) or len(sentences) < 3:
+    # 如果没有例句，就查一下
+    if not w_raw.get('sentences'):
         w = utils.smart_fetch(w_raw['word']) or w_raw
     else:
         w = w_raw
@@ -85,11 +81,18 @@ else:
 """, unsafe_allow_html=True)
 
     with c2:
+        # 组词显示 (可能只有1个)
         if w.get('collocations'):
-            cols = "".join([f"<li>{c}</li>" for c in w['collocations']])
+            # 兼容：如果是列表就join，如果是字符串直接显示
+            cols = w['collocations']
+            if isinstance(cols, list):
+                cols_html = "".join([f"<li>{c}</li>" for c in cols])
+            else:
+                cols_html = f"<li>{cols}</li>"
+                
             st.markdown(f"""
 <div class="info-box" style="border-left-color: #0EA5E9;">
-<b>PHRASES</b><ul>{cols}</ul>
+<b>PHRASES</b><ul>{cols_html}</ul>
 </div>
 """, unsafe_allow_html=True)
             
@@ -103,6 +106,7 @@ else:
     st.markdown("---")
     st.markdown("#### Sentences")
     
+    # 例句显示 (兼容1句或3句)
     s_list = w.get('sentences', [])
     if isinstance(s_list, list):
         for i, s in enumerate(s_list):
