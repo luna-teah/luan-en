@@ -17,11 +17,10 @@ st.title("⚡ 学习新词")
 all_words = list(db.library.find({}))
 u_prog = db.users.find_one({"_id": user}).get('progress', {})
 
-# === 🧠 智能分类清洗 (解决 Business 和 Business 重复问题) ===
+# 分类去重
 cats = {}
 for w in all_words:
     if w['word'] not in u_prog:
-        # 强制转字符串并去除空格
         raw_cat = str(w.get('category', '未分类')).strip()
         cats[raw_cat] = cats.get(raw_cat, 0) + 1
 
@@ -30,7 +29,6 @@ sel = st.selectbox("📂 选择分类", options)
 
 target_cat = sel.split(" (")[0] if "(" in sel else sel
 
-# === 筛选词库 ===
 pool = []
 for w in all_words:
     if w['word'] not in u_prog:
@@ -41,18 +39,15 @@ for w in all_words:
 if not pool:
     st.success("🎉 本分类已学完！")
 else:
+    # 强制刷新旧词 (确保旧词也能获得简单的例句)
     w_raw = pool[0]
-    w = utils.smart_fetch(w_raw['word']) 
-    if not w: w = w_raw 
+    # 如果这个词没有sentences或者sentences少于3个，就强制重新生成
+    if not w_raw.get('sentences') or len(w_raw.get('sentences')) < 3:
+        w = utils.smart_fetch(w_raw['word']) or w_raw
+    else:
+        w = w_raw
 
-    # === 🔥 调整布局：播放按钮在最上面 ===
-    c_audio, c_space = st.columns([2, 8])
-    with c_audio:
-        # 按钮放在这里！
-        if st.button("🔊 播放发音", use_container_width=True): 
-            utils.play_audio(w['word'])
-
-    # === 单词卡片 ===
+    # === 卡片显示 ===
     st.markdown(f"""
     <div class="word-card">
         <h1 style="color:#4F46E5 !important; font-size:4rem; margin:0;">{w['word']}</h1>
@@ -61,7 +56,12 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # === 详情内容 ===
+    # 播放按钮置顶
+    c_audio, c_space = st.columns([2, 8])
+    with c_audio:
+        if st.button("🔊 播放发音", use_container_width=True): 
+            utils.play_audio(w['word'])
+
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -98,14 +98,24 @@ else:
             """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 📖 场景造句")
-    if w.get('sentences'):
-        for s in w['sentences']:
-            st.markdown(f"**{s.get('en')}**")
-            st.caption(f"{s.get('cn')}")
-            st.divider()
+    st.markdown("#### 📖 阶梯例句 (由简入难)")
     
-    # 底部只留“学会了”按钮
+    # 定义难度标签
+    labels = ["🌱 简单 (Simple)", "⛅ 日常 (Daily)", "💼 商务 (Business)"]
+    
+    if w.get('sentences'):
+        for i, s in enumerate(w['sentences']):
+            # 加上标签
+            label = labels[i] if i < 3 else "📝 例句"
+            st.markdown(f"""
+            <div style="background:white; border-left: 4px solid #E5E7EB; padding: 10px 15px; margin-bottom: 10px;">
+                <div style="font-size:0.8rem; color:#9CA3AF; font-weight:bold; margin-bottom:4px;">{label}</div>
+                <div style="font-size:1.1rem; color:#1F2937; margin-bottom:2px;">{s.get('en')}</div>
+                <div style="font-size:0.9rem; color:#6B7280;">{s.get('cn')}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("✅ 我学会了 (Next)", type="primary", use_container_width=True):
         db.users.update_one({"_id": user}, {"$set": {f"progress.{w['word']}": {"level": 1, "next_review": utils.get_next_time(1)}}})
         st.rerun()
