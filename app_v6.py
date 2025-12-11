@@ -4,7 +4,7 @@ import secrets
 import os
 import datetime
 
-# --- Force Light Theme ---
+# Force Light Theme
 config_content = """
 [theme]
 base="light"
@@ -39,7 +39,7 @@ if not st.session_state['logged_in']:
     except: pass
 
 def login_page():
-    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>Luna Pro V34</h1>", unsafe_allow_html=True)
+    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>Luna Pro V35</h1>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
@@ -50,6 +50,7 @@ def login_page():
             u = st.text_input("Username", key="login_u")
             p = st.text_input("Password", type="password", key="login_p")
             if st.button("Login", use_container_width=True, type="primary"):
+                # Fix: Check if db is not None
                 if db is not None:
                     user = db.users.find_one({"_id": u})
                     if user and utils.check_hashes(p, user['password']):
@@ -58,8 +59,8 @@ def login_page():
                         st.query_params["token"] = token
                         st.session_state.update({'logged_in':True, 'username':u})
                         st.rerun()
-                    else: st.error("Wrong username or password")
-                else: st.error("Database connection failed")
+                    else: st.error("Wrong password")
+                else: st.error("Database failed")
         
         with tab2:
             nu = st.text_input("New Username", key="reg_u")
@@ -68,27 +69,23 @@ def login_page():
                 if db is not None and nu:
                     if not db.users.find_one({"_id": nu}):
                         db.users.insert_one({"_id": nu, "password": utils.make_hashes(np), "progress": {}, "stats": {}})
-                        st.success("Success! Please login.")
-                    else: st.warning("User already exists")
+                        st.success("Success!")
+                    else: st.warning("User exists")
 
 if not st.session_state['logged_in']:
     login_page()
 else:
-    # Sidebar
     with st.sidebar:
-        st.markdown("### My Stats")
+        st.markdown("### Stats")
         user = st.session_state['username']
         db = utils.get_db()
         if db is not None:
             u_doc = db.users.find_one({"_id": user})
             stats = u_doc.get("stats", {}) if u_doc else {}
             today = datetime.datetime.now().strftime("%Y-%m-%d")
-            
-            progress = u_doc.get("progress", {}) if u_doc else {}
-            
-            c_s1, c_s2 = st.columns(2)
-            c_s1.metric("Today", stats.get(today, 0))
-            c_s2.metric("Total", len(progress))
+            prog = u_doc.get("progress", {}) if u_doc else {}
+            st.metric("Today", stats.get(today, 0))
+            st.metric("Total", len(prog))
         
         st.divider()
         if st.button("Logout"):
@@ -98,19 +95,12 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # Main Menu
     st.markdown(f"## Hi, {st.session_state['username']}")
     st.divider()
     c1, c2, c3 = st.columns(3)
-    
     with c1:
-        st.markdown("<div class='nav-card'><h3>Learn</h3><p>New Words</p></div>", unsafe_allow_html=True)
         if st.button("Go Learn", use_container_width=True): st.switch_page("pages/1_⚡_Learn.py")
-    
     with c2:
-        st.markdown("<div class='nav-card'><h3>Review</h3><p>Memory Check</p></div>", unsafe_allow_html=True)
         if st.button("Go Review", use_container_width=True): st.switch_page("pages/2_🧠_Review.py")
-        
     with c3:
-        st.markdown("<div class='nav-card'><h3>Add</h3><p>AI Generator</p></div>", unsafe_allow_html=True)
         if st.button("Go Add", use_container_width=True): st.switch_page("pages/3_🚀_Add.py")
