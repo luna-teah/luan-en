@@ -39,9 +39,8 @@ for w in all_words:
 if not pool:
     st.success("🎉 本分类已学完！")
 else:
-    # 强制刷新旧词 (确保旧词也能获得简单的例句)
+    # 强制刷新旧词 (确保数据完整)
     w_raw = pool[0]
-    # 如果这个词没有sentences或者sentences少于3个，就强制重新生成
     if not w_raw.get('sentences') or len(w_raw.get('sentences')) < 3:
         w = utils.smart_fetch(w_raw['word']) or w_raw
     else:
@@ -56,10 +55,10 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # 播放按钮置顶
+    # 单词发音 (置顶大按钮)
     c_audio, c_space = st.columns([2, 8])
     with c_audio:
-        if st.button("🔊 播放发音", use_container_width=True): 
+        if st.button("🔊 单词发音", use_container_width=True, key="btn_main_audio"): 
             utils.play_audio(w['word'])
 
     c1, c2 = st.columns(2)
@@ -71,11 +70,12 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
+        # 词根显示 (如果有)
         if w.get('roots'):
             st.markdown(f"""
-            <div class="word-card" style="padding:15px; margin-top:15px; text-align:left; background:#FFF7ED !important; border:1px solid #FFEDD5;">
-                <div style="font-weight:bold; opacity:0.7; color:#C2410C;">🌱 ROOTS (词根)</div>
-                <div style="color:#9A3412;">{w['roots']}</div>
+            <div class="roots-box">
+                <div style="font-weight:bold; opacity:0.7;">🌱 ROOTS (词根)</div>
+                <div style="color:#C2410C;">{w['roots']}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -98,22 +98,32 @@ else:
             """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 📖 阶梯例句 (由简入难)")
+    st.markdown("#### 📖 阶梯例句 (含发音)")
     
-    # 定义难度标签
     labels = ["🌱 简单 (Simple)", "⛅ 日常 (Daily)", "💼 商务 (Business)"]
     
     if w.get('sentences'):
         for i, s in enumerate(w['sentences']):
-            # 加上标签
             label = labels[i] if i < 3 else "📝 例句"
-            st.markdown(f"""
-            <div style="background:white; border-left: 4px solid #E5E7EB; padding: 10px 15px; margin-bottom: 10px;">
-                <div style="font-size:0.8rem; color:#9CA3AF; font-weight:bold; margin-bottom:4px;">{label}</div>
-                <div style="font-size:1.1rem; color:#1F2937; margin-bottom:2px;">{s.get('en')}</div>
-                <div style="font-size:0.9rem; color:#6B7280;">{s.get('cn')}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            
+            # 使用分栏：左边文字(80%)，右边按钮(20%)
+            col_text, col_btn = st.columns([8, 2])
+            
+            with col_text:
+                st.markdown(f"""
+                <div style="background:white; border-left: 4px solid #E5E7EB; padding: 10px 15px; margin-bottom: 10px;">
+                    <div style="font-size:0.8rem; color:#9CA3AF; font-weight:bold; margin-bottom:4px;">{label}</div>
+                    <div style="font-size:1.1rem; color:#1F2937; margin-bottom:2px;">{s.get('en')}</div>
+                    <div style="font-size:0.9rem; color:#6B7280;">{s.get('cn')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_btn:
+                # 垂直居中稍微有点难，直接放按钮
+                st.write("") 
+                st.write("")
+                if st.button("🔈", key=f"tts_{w['word']}_{i}"):
+                    utils.play_audio(s.get('en'))
     
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("✅ 我学会了 (Next)", type="primary", use_container_width=True):
