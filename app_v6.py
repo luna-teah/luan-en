@@ -4,16 +4,16 @@ import time
 import datetime
 import json
 import random
-import hashlib  # ✅ 已修复：补上了加密工具
-import os       # ✅ 已修复：补上了系统工具
-import secrets  # ✅ 新增：用于生成自动登录令牌
+import hashlib  # ✅ 修复1: 补上了加密工具
+import os       
+import secrets  # ✅ 新增: 用于生成自动登录令牌
 from gtts import gTTS
 from io import BytesIO
 import pymongo
 from openai import OpenAI
 
 # --- 0. 全局配置 ---
-st.set_page_config(page_title="Luna Pro V14.3", page_icon="💎", layout="centered")
+st.set_page_config(page_title="Luna Pro V14.4", page_icon="💎", layout="centered")
 
 # 强制生成配置文件 (浅色模式)
 if not os.path.exists(".streamlit"):
@@ -84,7 +84,7 @@ def get_next_review_time(level):
 # --- 4. 核心：智能查词 (已修复报错) ---
 def smart_fetch_word_data(word):
     db = get_db()
-    if db is None: return None  # ✅ 修复：正确的数据库判断方式
+    if db is None: return None  # ✅ 修复2: 正确的数据库判断方式
     
     # 1. 查缓存
     cached = db.library.find_one({"word": word.lower().strip()})
@@ -121,7 +121,12 @@ def smart_fetch_word_data(word):
             db.library.insert_one(data)
             return data
         except Exception as e:
-            st.error(f"AI Error: {e}")
+            # 优雅处理余额不足等错误
+            err_str = str(e)
+            if "402" in err_str or "Insufficient Balance" in err_str:
+                st.error("⚠️ AI 生成失败：DeepSeek 账户余额不足。请前往充值或检查 API Key。")
+            else:
+                st.error(f"AI 生成出错: {e}")
             return None
     return None
 
@@ -133,17 +138,22 @@ if 'logged_in' not in st.session_state:
 # 🔥 自动登录检查 🔥
 if not st.session_state['logged_in']:
     # 检查 URL 里有没有 token
-    params = st.query_params
-    token = params.get("token")
-    if token:
-        db = get_db()
-        if db is not None:
-            # 拿 token 去数据库找用户
-            user = db.users.find_one({"session_token": token})
-            if user:
-                st.session_state['logged_in'] = True
-                st.session_state['username'] = user['_id']
-                st.toast(f"👋 欢迎回来, {user['_id']} (自动登录)")
+    try:
+        # 兼容不同版本的 Streamlit 参数获取方式
+        params = st.query_params 
+        token = params.get("token")
+        
+        if token:
+            db = get_db()
+            if db is not None:
+                # 拿 token 去数据库找用户
+                user = db.users.find_one({"session_token": token})
+                if user:
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = user['_id']
+                    st.toast(f"👋 欢迎回来, {user['_id']} (自动登录)")
+    except:
+        pass
 
 def login_page():
     st.markdown("<br><br><h1 style='text-align: center; color: #58cc02;'>💎 Luna Pro</h1>", unsafe_allow_html=True)
@@ -240,68 +250,71 @@ else:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("⭐ 加入我的复习计划", type="primary", use_container_width=True):
-                    db.users.update_one({"_id": username},{"$set": {f"progress.{data['word']}": {"level": 0, "next_review": 0}}})
-                    st.toast(f"✅ {data['word']} 已添加！")
-            else: st.error("AI 暂时繁忙，请重试。")
+                    if db is not None:
+                        db.users.update_one({"_id": username},{"$set": {f"progress.{data['word']}": {"level": 0, "next_review": 0}}})
+                        st.toast(f"✅ {data['word']} 已添加！")
+            else: pass # 错误信息已在函数内处理
 
     # --- 🧠 沉浸复习 ---
     elif menu == "🧠 沉浸复习":
-        user_doc = db.users.find_one({"_id": username})
-        progress = user_doc.get("progress", {})
-        now = time.time()
-        due_words = [w for w, info in progress.items() if info['next_review'] < now]
-        
-        if not due_words:
-            st.balloons()
-            st.success("🎉 今日复习任务已完成！")
-            st.info("快去【极速查词】添加新词吧！")
-        else:
-            if 'curr_w' not in st.session_state or st.session_state['curr_w'] not in due_words:
-                st.session_state['curr_w'] = random.choice(due_words)
-                st.session_state['show'] = False
+        if db is not None:
+            user_doc = db.users.find_one({"_id": username})
+            progress = user_doc.get("progress", {})
+            now = time.time()
+            due_words = [w for w, info in progress.items() if info['next_review'] < now]
             
-            w_str = st.session_state['curr_w']
-            word_data = db.library.find_one({"word": w_str})
-            
-            st.markdown(f"<div style='text-align:center;margin-top:50px;'><h1 style='font-size:3.5rem;'>{w_str}</h1></div>", unsafe_allow_html=True)
-            if st.button("🔊"): play_audio(w_str)
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            if not st.session_state['show']:
-                if st.button("👁️ 查看答案", type="primary", use_container_width=True):
-                    st.session_state['show'] = True
-                    st.rerun()
+            if not due_words:
+                st.balloons()
+                st.success("🎉 今日复习任务已完成！")
+                st.info("快去【极速查词】添加新词吧！")
             else:
-                if word_data:
-                    st.markdown(f"""
-                    <div class="meaning-box" style="text-align:center;"><span class="meaning-text">{word_data.get('meaning')}</span></div>
-                    <div class="brain-capsule"><span class="brain-tag">🧠 助记</span><span class="brain-text">{word_data.get('mnemonic', '暂无')}</span></div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown("#### 记忆反馈")
-                    c1, c2, c3 = st.columns(3)
-                    lvl = progress[w_str].get('level', 0)
-                    
-                    with c1:
-                        if st.button("🔴 忘了", use_container_width=True):
-                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": 0, "next_review": get_next_review_time(0)}}})
-                            st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
-                    with c2:
-                        if st.button("🟡 模糊", use_container_width=True):
-                            nl = max(1, lvl)
-                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": nl, "next_review": get_next_review_time(nl)}}})
-                            st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
-                    with c3:
-                        if st.button("🟢 简单", use_container_width=True):
-                            nl = lvl + 1
-                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": nl, "next_review": get_next_review_time(nl)}}})
-                            st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
+                if 'curr_w' not in st.session_state or st.session_state['curr_w'] not in due_words:
+                    st.session_state['curr_w'] = random.choice(due_words)
+                    st.session_state['show'] = False
+                
+                w_str = st.session_state['curr_w']
+                word_data = db.library.find_one({"word": w_str})
+                
+                st.markdown(f"<div style='text-align:center;margin-top:50px;'><h1 style='font-size:3.5rem;'>{w_str}</h1></div>", unsafe_allow_html=True)
+                if st.button("🔊"): play_audio(w_str)
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                if not st.session_state['show']:
+                    if st.button("👁️ 查看答案", type="primary", use_container_width=True):
+                        st.session_state['show'] = True
+                        st.rerun()
+                else:
+                    if word_data:
+                        st.markdown(f"""
+                        <div class="meaning-box" style="text-align:center;"><span class="meaning-text">{word_data.get('meaning')}</span></div>
+                        <div class="brain-capsule"><span class="brain-tag">🧠 助记</span><span class="brain-text">{word_data.get('mnemonic', '暂无')}</span></div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("#### 记忆反馈")
+                        c1, c2, c3 = st.columns(3)
+                        lvl = progress[w_str].get('level', 0)
+                        
+                        with c1:
+                            if st.button("🔴 忘了", use_container_width=True):
+                                db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": 0, "next_review": get_next_review_time(0)}}})
+                                st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
+                        with c2:
+                            if st.button("🟡 模糊", use_container_width=True):
+                                nl = max(1, lvl)
+                                db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": nl, "next_review": get_next_review_time(nl)}}})
+                                st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
+                        with c3:
+                            if st.button("🟢 简单", use_container_width=True):
+                                nl = lvl + 1
+                                db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": nl, "next_review": get_next_review_time(nl)}}})
+                                st.session_state['show'] = False; del st.session_state['curr_w']; st.rerun()
 
     # --- 📊 数据 ---
     elif menu == "📊 数据中心":
         st.title("📊 学习统计")
-        user_doc = db.users.find_one({"_id": username})
-        prog = user_doc.get("progress", {})
-        c1, c2 = st.columns(2)
-        c1.metric("累计生词", len(prog))
-        c2.metric("熟练掌握", len([k for k,v in prog.items() if v['level'] > 3]))
+        if db is not None:
+            user_doc = db.users.find_one({"_id": username})
+            prog = user_doc.get("progress", {})
+            c1, c2 = st.columns(2)
+            c1.metric("累计生词", len(prog))
+            c2.metric("熟练掌握", len([k for k,v in prog.items() if v['level'] > 3]))
