@@ -4,7 +4,7 @@ import secrets
 import os
 import datetime
 
-# --- Force Light Theme Config ---
+# --- Force Light Theme ---
 config_content = """
 [theme]
 base="light"
@@ -25,7 +25,7 @@ utils.local_css()
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# Auto Login Check
+# Auto Login
 if not st.session_state['logged_in']:
     try:
         token = st.query_params.get("token")
@@ -39,7 +39,7 @@ if not st.session_state['logged_in']:
     except: pass
 
 def login_page():
-    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>Luna Pro V29</h1>", unsafe_allow_html=True)
+    st.markdown("<br><h1 style='text-align:center;color:#4F46E5 !important'>Luna Pro V33</h1>", unsafe_allow_html=True)
     
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
@@ -50,6 +50,7 @@ def login_page():
             u = st.text_input("Username", key="login_u")
             p = st.text_input("Password", type="password", key="login_p")
             if st.button("Login", use_container_width=True, type="primary"):
+                # FIX: Check if db is not None
                 if db is not None:
                     user = db.users.find_one({"_id": u})
                     if user and utils.check_hashes(p, user['password']):
@@ -74,16 +75,30 @@ def login_page():
 if not st.session_state['logged_in']:
     login_page()
 else:
-    # Sidebar Stats
+    # --- Sidebar Stats (New Feature) ---
     with st.sidebar:
-        st.markdown("### My Stats")
+        st.markdown("### 📊 My Stats")
         user = st.session_state['username']
         db = utils.get_db()
+        
         if db is not None:
             u_doc = db.users.find_one({"_id": user})
+            
+            # 1. Calculate Today's Words
             stats = u_doc.get("stats", {}) if u_doc else {}
             today = datetime.datetime.now().strftime("%Y-%m-%d")
-            st.metric("Words Today", stats.get(today, 0))
+            count_today = stats.get(today, 0)
+            
+            # 2. Calculate Total Learned Words
+            progress = u_doc.get("progress", {}) if u_doc else {}
+            count_total = len(progress)
+            
+            # Display Metrics
+            c_s1, c_s2 = st.columns(2)
+            with c_s1:
+                st.metric("🔥 Today", count_today)
+            with c_s2:
+                st.metric("🏆 Total", count_total)
         
         st.divider()
         if st.button("Logout"):
@@ -93,7 +108,7 @@ else:
             st.session_state.clear()
             st.rerun()
 
-    # Main Menu
+    # --- Main Menu ---
     st.markdown(f"## Hi, {st.session_state['username']}")
     st.divider()
     c1, c2, c3 = st.columns(3)
