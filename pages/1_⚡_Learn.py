@@ -17,43 +17,42 @@ st.title("⚡ 学习新词")
 all_words = list(db.library.find({}))
 u_prog = db.users.find_one({"_id": user}).get('progress', {})
 
-# === 🧠 智能分类清洗逻辑 ===
+# === 🧠 智能分类清洗 (解决 Business 和 Business 重复问题) ===
 cats = {}
 for w in all_words:
     if w['word'] not in u_prog:
-        # 1. 获取分类，默认'未分类'
-        raw_cat = w.get('category', '未分类')
-        # 2. 强制转字符串 + 去除首尾空格 (解决 'Business ' 重复问题)
-        clean_cat = str(raw_cat).strip()
-        # 3. 统计
-        cats[clean_cat] = cats.get(clean_cat, 0) + 1
+        # 强制转字符串并去除空格
+        raw_cat = str(w.get('category', '未分类')).strip()
+        cats[raw_cat] = cats.get(raw_cat, 0) + 1
 
-# 生成选项
 options = ["全部"] + [f"{k} ({v})" for k,v in cats.items()]
 sel = st.selectbox("📂 选择分类", options)
 
-# 获取用户选择的纯分类名 (去掉括号里的数字)
 target_cat = sel.split(" (")[0] if "(" in sel else sel
 
 # === 筛选词库 ===
 pool = []
 for w in all_words:
     if w['word'] not in u_prog:
-        # 这里也要清洗一下再比对
         w_cat = str(w.get('category', '未分类')).strip()
-        
         if target_cat == "全部" or w_cat == target_cat:
             pool.append(w)
 
 if not pool:
     st.success("🎉 本分类已学完！")
 else:
-    # 强制更新数据（如果旧数据没有词根，就重新查一次AI）
     w_raw = pool[0]
     w = utils.smart_fetch(w_raw['word']) 
     if not w: w = w_raw 
 
-    # === 卡片显示 ===
+    # === 🔥 调整布局：播放按钮在最上面 ===
+    c_audio, c_space = st.columns([2, 8])
+    with c_audio:
+        # 按钮放在这里！
+        if st.button("🔊 播放发音", use_container_width=True): 
+            utils.play_audio(w['word'])
+
+    # === 单词卡片 ===
     st.markdown(f"""
     <div class="word-card">
         <h1 style="color:#4F46E5 !important; font-size:4rem; margin:0;">{w['word']}</h1>
@@ -62,6 +61,7 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
+    # === 详情内容 ===
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
@@ -105,10 +105,7 @@ else:
             st.caption(f"{s.get('cn')}")
             st.divider()
     
-    c_a, c_b = st.columns([1,4])
-    with c_a:
-        if st.button("🔊 播放"): utils.play_audio(w['word'])
-    with c_b:
-        if st.button("✅ 我学会了 (Next)", type="primary", use_container_width=True):
-            db.users.update_one({"_id": user}, {"$set": {f"progress.{w['word']}": {"level": 1, "next_review": utils.get_next_time(1)}}})
-            st.rerun()
+    # 底部只留“学会了”按钮
+    if st.button("✅ 我学会了 (Next)", type="primary", use_container_width=True):
+        db.users.update_one({"_id": user}, {"$set": {f"progress.{w['word']}": {"level": 1, "next_review": utils.get_next_time(1)}}})
+        st.rerun()
