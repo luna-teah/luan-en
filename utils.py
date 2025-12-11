@@ -13,17 +13,14 @@ import os
 def local_css():
     st.markdown("""
     <style>
-    /* Force Light Mode */
     [data-testid="stAppViewContainer"] { background-color: #F3F4F6 !important; }
     [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
     
-    /* Text Color */
     h1, h2, h3, h4, h5, h6, p, div, span, label, li, button { 
         color: #111827 !important; 
         font-family: sans-serif; 
     }
     
-    /* Inputs */
     div[data-baseweb="input"] {
         background-color: #FFFFFF !important;
         border: 1px solid #D1D5DB !important;
@@ -35,7 +32,6 @@ def local_css():
         caret-color: #000000 !important;
     }
     
-    /* Dropdowns */
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -45,7 +41,6 @@ def local_css():
     li[role="option"] { color: #111827 !important; background-color: #FFFFFF !important; }
     li[role="option"]:hover { background-color: #E0E7FF !important; }
 
-    /* Buttons */
     button[kind="primary"] {
         background-color: #4F46E5 !important;
         color: #FFFFFF !important;
@@ -57,7 +52,6 @@ def local_css():
         border: 1px solid #D1D5DB !important;
     }
 
-    /* Cards */
     .word-card {
         background-color: #FFFFFF !important;
         padding: 30px;
@@ -75,16 +69,6 @@ def local_css():
         margin-top: 10px;
         text-align: left;
         border: 1px solid #E5E7EB;
-    }
-    
-    .tag-span {
-        background-color: #E5E7EB !important;
-        color: #111827 !important;
-        padding: 2px 10px;
-        border-radius: 10px;
-        font-size: 0.8rem;
-        margin: 5px;
-        display: inline-block;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -115,9 +99,7 @@ def smart_fetch(word_input):
         query = raw_input.lower()
         try:
             cached = db.library.find_one({"word": query})
-            # Ensure cache is valid
-            if cached and 'roots' in cached and 'sentences' in cached:
-                return cached
+            if cached and 'roots' in cached and 'sentences' in cached: return cached
         except: pass
     
     ai = get_ai_client()
@@ -130,23 +112,11 @@ def smart_fetch(word_input):
             3. "meaning": Single string of Chinese meaning.
             4. "roots": Root explanation.
             5. "collocations": 3 English phrases.
-            6. "sentences": 3 sentences (Child -> Daily -> Business).
+            6. "mnemonic": Funny memory trick.
+            7. "category": Category.
+            8. "sentences": 3 sentences (Child -> Daily -> Business).
             
-            Format:
-            {{
-                "word": "EnglishWord",
-                "phonetic": "IPA",
-                "meaning": "Chinese Meaning",
-                "roots": "Root explanation",
-                "collocations": ["phrase1", "phrase2", "phrase3"],
-                "mnemonic": "Memory trick",
-                "category": "Category",
-                "sentences": [
-                    {{"en": "Simple sentence.", "cn": "Simple translation."}},
-                    {{"en": "Daily sentence.", "cn": "Daily translation."}},
-                    {{"en": "Business sentence.", "cn": "Business translation."}}
-                ]
-            }}
+            Return strictly JSON.
             """
             
             resp = ai.chat.completions.create(
@@ -170,11 +140,10 @@ def batch_gen(topic):
     ai = get_ai_client()
     if not ai: return []
     try:
-        prompt = f"List 10 simple English words about '{topic}' for beginners. Return JSON array of strings: ['word1', 'word2']"
+        prompt = f"List 10 simple English words about '{topic}' for beginners. Return JSON array: ['word1', 'word2']"
         resp = ai.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
         data = json.loads(resp.choices[0].message.content)
-        if isinstance(data, dict):
-            return list(data.values())[0]
+        if isinstance(data, dict): return list(data.values())[0]
         return data if isinstance(data, list) else []
     except: return []
 
