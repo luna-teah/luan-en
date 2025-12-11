@@ -2,7 +2,7 @@ import streamlit as st
 import utils
 
 st.set_page_config(page_title="学习", layout="wide")
-utils.local_css() # 确保这里也加载了样式
+utils.local_css()
 
 if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
     st.warning("请先登录")
@@ -15,28 +15,50 @@ if st.button("⬅️ 返回主页"): st.switch_page("app_v6.py")
 st.title("⚡ 学习新词")
 
 all_words = list(db.library.find({}))
-cats = list(set([w.get('category','未分类') for w in all_words]))
 u_prog = db.users.find_one({"_id": user}).get('progress', {})
 
-# 修复下拉菜单显示
-options = ["全部"] + [c for c in cats]
+# === 🧠 智能分类清洗逻辑 ===
+cats = {}
+for w in all_words:
+    if w['word'] not in u_prog:
+        # 1. 获取分类，默认'未分类'
+        raw_cat = w.get('category', '未分类')
+        # 2. 强制转字符串 + 去除首尾空格 (解决 'Business ' 重复问题)
+        clean_cat = str(raw_cat).strip()
+        # 3. 统计
+        cats[clean_cat] = cats.get(clean_cat, 0) + 1
+
+# 生成选项
+options = ["全部"] + [f"{k} ({v})" for k,v in cats.items()]
 sel = st.selectbox("📂 选择分类", options)
 
-pool = [w for w in all_words if w['word'] not in u_prog and (sel=="全部" or w.get('category')==sel)]
+# 获取用户选择的纯分类名 (去掉括号里的数字)
+target_cat = sel.split(" (")[0] if "(" in sel else sel
+
+# === 筛选词库 ===
+pool = []
+for w in all_words:
+    if w['word'] not in u_prog:
+        # 这里也要清洗一下再比对
+        w_cat = str(w.get('category', '未分类')).strip()
+        
+        if target_cat == "全部" or w_cat == target_cat:
+            pool.append(w)
 
 if not pool:
     st.success("🎉 本分类已学完！")
 else:
     # 强制更新数据（如果旧数据没有词根，就重新查一次AI）
     w_raw = pool[0]
-    w = utils.smart_fetch(w_raw['word']) # 这步会自动补全词根和搭配
-    if not w: w = w_raw # 兜底
+    w = utils.smart_fetch(w_raw['word']) 
+    if not w: w = w_raw 
 
     # === 卡片显示 ===
     st.markdown(f"""
     <div class="word-card">
         <h1 style="color:#4F46E5 !important; font-size:4rem; margin:0;">{w['word']}</h1>
         <p style="color:#6B7280 !important; font-size:1.5rem; font-style:italic;">/{w.get('phonetic','...')}/</p>
+        <span class="tag-pill">{str(w.get('category','')).strip()}</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -51,15 +73,14 @@ else:
         
         if w.get('roots'):
             st.markdown(f"""
-            <div class="roots-box">
-                <div style="font-weight:bold; opacity:0.7;">🌱 ROOTS (词根)</div>
-                <div>{w['roots']}</div>
+            <div class="word-card" style="padding:15px; margin-top:15px; text-align:left; background:#FFF7ED !important; border:1px solid #FFEDD5;">
+                <div style="font-weight:bold; opacity:0.7; color:#C2410C;">🌱 ROOTS (词根)</div>
+                <div style="color:#9A3412;">{w['roots']}</div>
             </div>
             """, unsafe_allow_html=True)
 
     with c2:
         if w.get('collocations'):
-            # 把数组转成 HTML 列表
             cols = "".join([f"<li>{c}</li>" for c in w['collocations']])
             st.markdown(f"""
             <div class="meaning-box" style="background:#F0F9FF !important; border-left:5px solid #0EA5E9 !important; color:#0C4A6E !important;">
