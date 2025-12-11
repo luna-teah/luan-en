@@ -7,43 +7,46 @@ from io import BytesIO
 import datetime
 import time
 import json
+import re
+import os
 
 def local_css():
     st.markdown("""
     <style>
-    /* Force Light Mode */
     [data-testid="stAppViewContainer"] { background-color: #F3F4F6 !important; }
-    header { visibility: hidden; }
+    [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
     
-    /* Force Text Color */
     h1, h2, h3, h4, h5, h6, p, div, span, label, li, button { 
-        color: #000000 !important; 
+        color: #111827 !important; 
         font-family: sans-serif; 
     }
     
-    /* Fix Input Fields (White Background) */
     div[data-baseweb="input"] {
         background-color: #FFFFFF !important;
-        border: 1px solid #9CA3AF !important;
+        border: 1px solid #D1D5DB !important;
         border-radius: 5px !important;
     }
     input {
-        color: #000000 !important;
+        color: #111827 !important;
         background-color: #FFFFFF !important;
-        caret-color: #000000 !important;
     }
     
-    /* Fix Dropdowns */
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 1px solid #9CA3AF !important;
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
     }
-    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; }
-    li[role="option"] { color: #000000 !important; background-color: #FFFFFF !important; }
-    li[role="option"]:hover { background-color: #E5E7EB !important; }
+    ul[data-baseweb="menu"] {
+        background-color: #FFFFFF !important;
+    }
+    li[role="option"] {
+        color: #111827 !important;
+        background-color: #FFFFFF !important;
+    }
+    li[role="option"]:hover {
+        background-color: #E0E7FF !important;
+    }
 
-    /* Buttons */
     button[kind="primary"] {
         background-color: #4F46E5 !important;
         color: #FFFFFF !important;
@@ -51,14 +54,38 @@ def local_css():
     }
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 1px solid #9CA3AF !important;
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
     }
 
-    /* Cards */
-    .word-card { background-color: #FFFFFF !important; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; border: 1px solid #E5E7EB; }
-    .nav-card { background-color: #FFFFFF !important; padding: 20px; border-radius: 15px; border: 1px solid #E5E7EB; text-align: center; height: 100%; }
-    .info-box { background-color: #FFFFFF !important; border-left: 5px solid #4F46E5; padding: 15px; margin-top: 10px; text-align: left; border: 1px solid #E5E7EB; }
+    .word-card {
+        background-color: #FFFFFF !important;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+        margin-bottom: 20px;
+        border: 1px solid #E5E7EB;
+    }
+    
+    .info-box {
+        background-color: #FFFFFF !important;
+        border-left: 5px solid #4F46E5;
+        padding: 15px;
+        margin-top: 10px;
+        text-align: left;
+        border: 1px solid #E5E7EB;
+    }
+    
+    .tag-span {
+        background-color: #E5E7EB !important;
+        color: #111827 !important;
+        padding: 2px 10px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        margin: 5px;
+        display: inline-block;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -77,37 +104,76 @@ def get_ai_client():
     try: return OpenAI(api_key=st.secrets["deepseek"]["api_key"], base_url=st.secrets["deepseek"]["base_url"])
     except: return None
 
-def smart_fetch(word):
+def smart_fetch(word_input):
     db = get_db()
     if db is None: return None
     
-    query = word.lower().strip()
-    try:
-        cached = db.library.find_one({"word": query})
-        if cached and 'roots' in cached and 'sentences' in cached: return cached
-    except: pass
+    raw_input = word_input.strip()
+    
+    is_chinese = any(ord(c) > 128 for c in raw_input)
+    
+    if not is_chinese:
+        query = raw_input.lower()
+        try:
+            cached = db.library.find_one({"word": query})
+            if cached and 'roots' in cached and 'sentences' in cached:
+                return cached
+        except: pass
     
     ai = get_ai_client()
     if ai:
         try:
-            prompt = f"""Generate JSON for English word "{query}". Strict JSON format only. Fields: word, phonetic, meaning (Chinese), roots (Chinese), collocations (3 English phrases), mnemonic (Chinese), category, sentences (3 objects with en, cn). Sentence 1 must be very simple."""
-            resp = ai.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
+            prompt = f"""
+            Task: Generate JSON for "{raw_input}".
+            1. If input is Chinese, translate to English first.
+            2. "word" field MUST be English.
+            3. "roots": Root explanation in Chinese.
+            4. "collocations": 3 English phrases.
+            5. "sentences": 3 sentences (Child level -> Daily level -> Business level).
+            
+            Format:
+            {{
+                "word": "EnglishWord",
+                "phonetic": "IPA",
+                "meaning": "Chinese Meaning",
+                "roots": "Root explanation",
+                "collocations": ["phrase1", "phrase2", "phrase3"],
+                "mnemonic": "Memory trick",
+                "category": "Category",
+                "sentences": [
+                    {{"en": "Simple sentence.", "cn": "Simple translation."}},
+                    {{"en": "Daily sentence.", "cn": "Daily translation."}},
+                    {{"en": "Business sentence.", "cn": "Business translation."}}
+                ]
+            }}
+            """
+            
+            resp = ai.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role":"user","content":prompt}],
+                response_format={"type":"json_object"}
+            )
             data = json.loads(resp.choices[0].message.content)
-            data['word'] = query
+            
+            final_word = data['word'].strip()
             data['created_at'] = datetime.datetime.now()
-            db.library.update_one({"word": query}, {"$set": data}, upsert=True)
+            
+            db.library.update_one({"word": final_word.lower()}, {"$set": data}, upsert=True)
             return data
-        except: return None
+        except Exception as e:
+            print(f"AI Error: {e}")
+            return None
     return None
 
 def batch_gen(topic):
     ai = get_ai_client()
     if not ai: return []
     try:
-        prompt = f"List 10 simple English words about '{topic}' for beginners. JSON array of strings only: ['word1', 'word2']"
+        prompt = f"List 10 simple English words about '{topic}' for beginners. Return JSON array of strings: ['word1', 'word2']"
         resp = ai.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
         data = json.loads(resp.choices[0].message.content)
-        if isinstance(data, dict): return list(data.values())[0]
+        if isinstance(data, dict):
+            return list(data.values())[0]
         return data if isinstance(data, list) else []
     except: return []
 
