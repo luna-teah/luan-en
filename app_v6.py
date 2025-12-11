@@ -1,320 +1,393 @@
 import streamlit as st
 import pandas as pd
-import os
 import time
-import hashlib
 import datetime
+import json
+import random
 from gtts import gTTS
 from io import BytesIO
-import pymongo 
+import pymongo
+from openai import OpenAI
 
-# --- 0. 基础配置 ---
-st.set_page_config(page_title="Luna Pro V11 (纯净版)", page_icon="📝", layout="wide")
+# --- 0. 全局配置 & 页面初始化 ---
+st.set_page_config(page_title="Luna Pro V14", page_icon="💎", layout="centered") # 改为centered布局，更像手机APP
 
-# 强制极简白底风格
+# 强制生成浅色配置文件
+import os
 if not os.path.exists(".streamlit"):
     os.makedirs(".streamlit")
 with open(".streamlit/config.toml", "w") as f:
-    f.write('[theme]\nbase="light"\nprimaryColor="#2c3e50"\nbackgroundColor="#ffffff"\nsecondaryBackgroundColor="#f8f9fa"\ntextColor="#2d3436"\nfont="sans serif"\n')
+    f.write('[theme]\nbase="light"\nprimaryColor="#58cc02"\nbackgroundColor="#f7f9fb"\nsecondaryBackgroundColor="#ffffff"\ntextColor="#2d3436"\nfont="sans serif"\n')
 
+# --- 1. 🎨 UI/UX 美学重构 (CSS) ---
 def local_css():
     st.markdown("""
     <style>
-    :root { --primary-color: #2c3e50; --text-color: #2d3436; }
-    [data-testid="stAppViewContainer"] { background-color: #ffffff !important; }
-    [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
-    [data-testid="stSidebar"] { background-color: #f8f9fa !important; border-right: 1px solid #eee; }
+    /* 全局去Streamlit默认样式 */
+    header {visibility: hidden;}
+    .block-container {padding-top: 2rem; max-width: 800px;}
     
-    /* 字体优化 */
-    h1, h2, h3, p, div { font-family: 'Helvetica Neue', Arial, sans-serif; color: #2d3436 !important; }
-    
-    /* 单词主卡片 (极简风) */
-    .word-header {
+    /* 核心卡片容器 */
+    .word-card {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 8px 24px rgba(149, 157, 165, 0.1);
+        padding: 30px;
+        margin-bottom: 20px;
+        border: 1px solid #edf2f7;
         text-align: center;
-        margin-bottom: 30px;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #eee;
+        transition: all 0.3s ease;
     }
-    .word-text { font-size: 4em; font-weight: 800; color: #2c3e50 !important; margin: 0; letter-spacing: -1px; }
-    .phonetic-text { color: #7f8c8d !important; font-size: 1.4em; font-family: 'Georgia', serif; font-style: italic; margin-top: 5px; }
-    .meaning-text { font-size: 1.8em; color: #2980b9 !important; font-weight: 600; margin-top: 10px; }
-    
-    /* 例句阶梯容器 */
-    .sentence-container {
-        margin-top: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-    }
-    
-    /* 例句卡片 (分级颜色) */
-    .sent-box {
-        padding: 15px 20px;
-        border-radius: 8px;
-        background: #fff;
-        border: 1px solid #eee;
-        transition: transform 0.2s;
-    }
-    .sent-box:hover { transform: translateX(5px); border-color: #ccc; }
-    
-    .lvl-1 { border-left: 5px solid #2ecc71; } /* 简单 - 绿 */
-    .lvl-2 { border-left: 5px solid #3498db; } /* 中等 - 蓝 */
-    .lvl-3 { border-left: 5px solid #f1c40f; } /* 进阶 - 黄 */
-    .lvl-4 { border-left: 5px solid #e67e22; } /* 困难 - 橙 */
-    .lvl-5 { border-left: 5px solid #e74c3c; } /* 高难 - 红 */
-    
-    .sent-en { font-size: 1.2em; font-weight: 500; color: #2c3e50 !important; display: block; margin-bottom: 4px; }
-    .sent-cn { font-size: 0.95em; color: #7f8c8d !important; }
-    .sent-tag { font-size: 0.7em; text-transform: uppercase; letter-spacing: 1px; color: #95a5a6 !important; margin-bottom: 5px; display: block;}
+    .word-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(149, 157, 165, 0.15); }
 
-    /* 按钮样式 */
-    .stButton button { border-radius: 20px !important; font-weight: bold; }
+    /* 单词与音标 */
+    .big-word { font-size: 3.2rem; font-weight: 800; color: #2d3436; margin-bottom: 0px; letter-spacing: -1px; }
+    .phonetic { font-family: 'Georgia', serif; color: #636e72; font-size: 1.2rem; margin-bottom: 15px; font-style: italic; }
+    
+    /* 含义 */
+    .meaning-box { 
+        background: #f0fdf4; border-left: 5px solid #58cc02; 
+        padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left;
+    }
+    .meaning-text { font-size: 1.2rem; color: #14532d; font-weight: 600; }
+
+    /* 脑洞记忆胶囊 */
+    .brain-capsule {
+        background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+        color: white; padding: 15px; border-radius: 12px;
+        margin: 15px 0; text-align: left; position: relative;
+        box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+    }
+    .brain-tag { font-size: 0.8rem; opacity: 0.8; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 5px; }
+    .brain-text { font-size: 1.1rem; line-height: 1.5; font-weight: 500; }
+
+    /* 例句列表 */
+    .sent-row {
+        background: white; border-bottom: 1px solid #f1f2f6;
+        padding: 12px 5px; text-align: left;
+    }
+    .sent-en { font-size: 1.05rem; color: #2d3436; font-weight: 500; margin-bottom: 4px; display: block; }
+    .sent-cn { font-size: 0.9rem; color: #b2bec3; }
+    
+    /* 标签系统 */
+    .tag-cloud { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 15px; }
+    .tag-pill {
+        background: #f1f2f6; color: #636e72; padding: 4px 12px;
+        border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+    }
+    
+    /* 复习按钮组 */
+    .review-btn-container { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 local_css()
 
-# --- 1. 数据库连接 ---
+# --- 2. 数据库与AI连接 ---
 @st.cache_resource
-def init_connection():
+def init_mongo():
     try: return pymongo.MongoClient(st.secrets["mongo"]["connection_string"])
     except: return None
 
-client = init_connection()
+client = init_mongo()
+def get_db(): return client.luna_vocab_db if client else None
 
-def get_user_collection():
-    if client: return client.luna_vocab_db.users
-    return None
-
-# --- 2. 数据库操作 ---
-def get_user_from_db(username):
-    coll = get_user_collection()
-    if coll: return coll.find_one({"_id": username})
-    return None
-
-def create_user_in_db(username, password_hash):
-    coll = get_user_collection()
-    if coll:
-        new_user = {
-            "_id": username, "password": password_hash, "progress": {},
-            "stats": {"streak": 0, "last_active_date": "", "daily_goal": 20, "today_count": 0, "last_count_date": ""}
-        }
-        try: coll.insert_one(new_user); return True
-        except: return False
-    return False
-
-def update_user_progress(username, word, level, next_review):
-    coll = get_user_collection()
-    if coll:
-        key = f"progress.{word}"
-        coll.update_one({"_id": username}, {"$set": {key: {"level": level, "next_review": next_review}}})
-
-def update_user_stats(username, stats_data):
-    coll = get_user_collection()
-    if coll: coll.update_one({"_id": username}, {"$set": {"stats": stats_data}})
-
-# --- 3. 辅助函数 ---
-@st.cache_data
-def load_all_sheets():
-    try:
-        all_sheets = pd.read_excel("words.xlsx", sheet_name=None)
-        valid_sheets = {}
-        for name, df in all_sheets.items():
-            if '单词 (Word)' in df.columns: valid_sheets[name] = df.dropna(subset=['单词 (Word)'])
-        return valid_sheets
+@st.cache_resource
+def get_ai_client():
+    try: return OpenAI(api_key=st.secrets["deepseek"]["api_key"], base_url=st.secrets["deepseek"]["base_url"])
     except: return None
+
+ai_client = get_ai_client()
+
+# --- 3. 核心逻辑：智能数据获取 (Cache First) ---
+def smart_fetch_word_data(word):
+    db = get_db()
+    if not db: return None
+    
+    # 1. 先去公共词库(Library)找
+    cached_word = db.library.find_one({"word": word.lower().strip()})
+    
+    # ✅ 情况A: 找到了！直接返回数据库里的数据 (省钱、秒开)
+    if cached_word:
+        return cached_word
+    
+    # ❌ 情况B: 没找到，呼叫 AI 生成
+    if ai_client:
+        prompt = f"""
+        请生成单词 "{word}" 的学习卡片 JSON 数据。
+        要求：
+        1. phonetic: 音标
+        2. meaning: 中文含义(外贸/商务场景优先)
+        3. mnemonic: 一个极其好记、搞笑的"谐音梗"或"脑洞"记忆法(中文)
+        4. synonyms: 3个近义词(数组)
+        5. antonyms: 3个反义词(数组)
+        6. sentences: 5个例句数组，包含 {{ "en": "英文句", "cn": "中文翻译", "level": "难度1-5" }}
+           - L1: 简单定义/短语
+           - L2: 日常生活
+           - L3: 商务沟通
+           - L4: 进阶/合同
+           - L5: 习语/高难
+        
+        只返回纯JSON。
+        """
+        try:
+            response = ai_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=1.2,
+                response_format={ "type": "json_object" }
+            )
+            data = json.loads(response.choices[0].message.content)
+            
+            # 补全字段防止报错
+            data['word'] = word.lower().strip()
+            data['created_at'] = datetime.datetime.now()
+            
+            # ✅ 存入公共词库 (造福下一个用户)
+            db.library.insert_one(data)
+            return data
+        except Exception as e:
+            st.error(f"AI 生成失败: {e}")
+            return None
+    return None
+
+# --- 4. 辅助功能 ---
+def play_audio(text):
+    try:
+        sound = BytesIO()
+        tts = gTTS(text=text, lang='en')
+        tts.write_to_fp(sound)
+        st.audio(sound, format='audio/mp3', start_time=0)
+    except: pass
 
 def make_hashes(p): return hashlib.sha256(str.encode(p)).hexdigest()
 def check_hashes(p, h): return make_hashes(p) == h
-def get_next_review_time(lvl):
-    intervals = [0, 300, 86400, 259200, 604800, 1296000]
-    sec = intervals[lvl] if lvl < len(intervals) else 2592000
+
+# 计算下次复习时间 (简易版 SuperMemo)
+def get_next_review_time(level):
+    # 0=刚刚, 1=1天后, 2=3天后, 3=7天后, 4=15天后, 5=30天后
+    intervals = [0, 86400, 259200, 604800, 1296000, 2592000]
+    sec = intervals[level] if level < len(intervals) else 2592000
     return time.time() + sec
 
-def play_audio(text):
-    try:
-        sound_file = BytesIO()
-        tts = gTTS(text=text, lang='en')
-        tts.write_to_fp(sound_file)
-        st.audio(sound_file, format='audio/mp3', start_time=0)
-    except: st.toast("⚠️ Audio Error")
-
-def get_today_str(): return datetime.date.today().strftime("%Y-%m-%d")
-
-# --- 4. 登录逻辑 ---
+# --- 5. 登录系统 ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['username'] = ''
 
-if st.session_state['logged_in']:
-    current_user_data = get_user_from_db(st.session_state['username'])
-    if not current_user_data:
-        st.session_state['logged_in'] = False
-        st.rerun()
-else:
-    current_user_data = None
-
-def login_system():
-    c1, c2, c3 = st.columns([1,2,1])
-    with c2:
-        st.markdown("<h1 style='text-align: center;'>📝 Vocabulary Master</h1>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Login", "Sign Up"])
-        with tab1:
-            u = st.text_input("Username", key="l_u")
-            p = st.text_input("Password", type="password", key="l_p")
-            if st.button("Login", use_container_width=True):
-                user = get_user_from_db(u)
+def login_page():
+    st.markdown("<br><br><h1 style='text-align: center; color: #58cc02;'>💎 Luna Pro</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #aaa;'>外贸英语 · 众筹词库 · 智能记忆</p>", unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["登录", "注册"])
+    db = get_db()
+    
+    with tab1:
+        u = st.text_input("用户名", key="l_u")
+        p = st.text_input("密码", type="password", key="l_p")
+        if st.button("🚀 进入学习", use_container_width=True, type="primary"):
+            if db is not None:
+                user = db.users.find_one({"_id": u})
                 if user and check_hashes(p, user['password']):
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = u
                     st.rerun()
-                else: st.error("Error")
-        with tab2:
-            nu = st.text_input("New Username", key="r_u")
-            np = st.text_input("New Password", type="password", key="r_p")
-            if st.button("Sign Up", use_container_width=True):
-                if nu and np: 
-                    if create_user_in_db(nu, make_hashes(np)): st.success("Created!")
-                    else: st.error("Exists")
+                else: st.error("账号或密码错误")
+            else: st.error("数据库连接失败")
+            
+    with tab2:
+        nu = st.text_input("新用户名", key="r_u")
+        np = st.text_input("设置密码", type="password", key="r_p")
+        if st.button("✨ 注册新账号", use_container_width=True):
+            if db is not None:
+                if db.users.find_one({"_id": nu}): st.warning("用户名已存在")
+                else:
+                    db.users.insert_one({
+                        "_id": nu, "password": make_hashes(np), 
+                        "progress": {}, # {word: {level: 0, next_review: timestamp}}
+                        "stats": {"streak": 0, "last_active": ""}
+                    })
+                    st.success("注册成功！请登录。")
 
-# --- 5. 主程序 ---
+# --- 6. 主程序逻辑 ---
 if not st.session_state['logged_in']:
-    login_system()
+    login_page()
 else:
-    user_stats = current_user_data.get('stats', {"streak": 0, "daily_goal": 20, "today_count": 0})
-    progress = current_user_data.get('progress', {})
     username = st.session_state['username']
-    sheets_data = load_all_sheets()
-
+    db = get_db()
+    
+    # 侧边栏
     with st.sidebar:
-        st.markdown(f"## 👤 {username}")
-        
-        today_str = get_today_str()
-        db_updated = False
-        if user_stats.get('last_count_date') != today_str:
-            user_stats['today_count'] = 0
-            user_stats['last_count_date'] = today_str
-            db_updated = True
-        
-        goal = user_stats.get('daily_goal', 20)
-        done = user_stats.get('today_count', 0)
-        
-        # 简单直接的显示
-        st.caption("今日目标")
-        st.progress(min(done / goal, 1.0))
-        st.caption(f"{done} / {goal}")
-
-        if db_updated: update_user_stats(username, user_stats)
-
-        st.markdown("---")
-        if st.button("Exit", use_container_width=True):
+        st.title(f"Hi, {username}")
+        menu = st.radio("导航", ["🔎 极速查词", "🧠 沉浸复习", "📊 数据中心"])
+        st.divider()
+        if st.button("退出登录"):
             st.session_state['logged_in'] = False
             st.rerun()
+
+    # --- 模块1: 极速查词 (Hunter Mode) ---
+    if menu == "🔎 极速查词":
+        st.markdown("## 🔎 极速查词")
         
-        if not sheets_data: st.stop()
-        cat_list = list(sheets_data.keys())
-        sel_cat = st.selectbox("Current Book", cat_list)
-        df_cur = sheets_data[sel_cat]
-        mode = st.radio("Mode", ["Learn", "Review"])
-
-    if mode == "Learn":
-        all_ws = df_cur['单词 (Word)'].tolist()
-        new_ws = [w for w in all_ws if w not in progress]
-        if not new_ws:
-            st.success("✅ All words learned in this list!")
-        else:
-            w_str = new_ws[0]
-            row = df_cur[df_cur['单词 (Word)'] == w_str].iloc[0]
+        # 搜索框 (自动触发)
+        word_input = st.text_input("输入单词回车 (支持中文/英文)", placeholder="例如: negotiation", key="search_box")
+        
+        if word_input:
+            with st.spinner("🚀 正在云端检索 (如有缓存将秒开)..."):
+                # 核心：调用智能获取函数
+                data = smart_fetch_word_data(word_input)
             
-            # 极简单词头
-            st.markdown(f"""
-            <div class="word-header">
-                <p class="word-text">{row['单词 (Word)']}</p>
-                <div style="display:flex; justify-content:center; gap:15px; align-items:center;">
-                    <p class="phonetic-text">{row['音标 (Phonetic)']}</p>
+            if data:
+                # === 单词主卡片 ===
+                st.markdown(f"""
+                <div class="word-card">
+                    <p class="big-word">{data['word']}</p>
+                    <p class="phonetic">/{data.get('phonetic', '...')}/</p>
+                    <div class="tag-cloud">
+                        {' '.join([f'<span class="tag-pill">🔗 {s}</span>' for s in data.get('synonyms', [])[:3]])}
+                        {' '.join([f'<span class="tag-pill">⚡ {a}</span>' for a in data.get('antonyms', [])[:3]])}
+                    </div>
                 </div>
-                <p class="meaning-text">{row['中文 (Meaning)']}</p>
-            </div>""", unsafe_allow_html=True)
-            
-            c_audio, c_rest = st.columns([1, 10])
-            with c_audio:
-                if st.button("🔊", help="Play Pronunciation"): play_audio(w_str)
-
-            # 阶梯式例句展示 (支持5级)
-            st.markdown("### 📚 Graded Sentences (由简入难)")
-            
-            levels = [
-                ("Level 1 · Simple", "lvl-1"), 
-                ("Level 2 · Daily", "lvl-2"), 
-                ("Level 3 · Business", "lvl-3"), 
-                ("Level 4 · Professional", "lvl-4"), 
-                ("Level 5 · Advanced", "lvl-5")
-            ]
-            
-            for i in range(1, 6):
-                s_key = f"例句{i} (Sentence{i})"
-                cn_key = f"例句{i}中文 (CN{i})"
+                """, unsafe_allow_html=True)
                 
-                # 只有当Excel里填了这句时才显示
-                if s_key in row and not pd.isna(row[s_key]):
-                    level_name, css_class = levels[i-1]
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="sent-box {css_class}">
-                            <span class="sent-tag">{level_name}</span>
-                            <span class="sent-en">{row[s_key]}</span>
-                            <span class="sent-cn">{row[cn_key]}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        if st.button("🎧", key=f"s_btn_{i}"): play_audio(str(row[s_key]))
-            
-            st.markdown("<br><br>", unsafe_allow_html=True)
-            
-            # 极简按钮
-            c1, c2, c3 = st.columns([1, 2, 1])
-            with c2:
-                if st.button("✅ 学会了", type="primary", use_container_width=True):
-                    update_user_progress(username, w_str, 1, get_next_review_time(1))
-                    if user_stats['last_count_date'] == today_str: user_stats['today_count'] += 1
-                    else: 
-                        user_stats['today_count'] = 1
-                        user_stats['last_count_date'] = today_str
-                    
-                    # 连胜逻辑简化
-                    last_active = user_stats.get('last_active_date', '')
-                    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-                    if last_active != today_str:
-                        if last_active == yesterday: user_stats['streak'] += 1
-                        else: user_stats['streak'] = 1
-                    user_stats['last_active_date'] = today_str
-                    
-                    update_user_stats(username, user_stats)
-                    st.rerun()
+                # 发音
+                if st.button("🔊 朗读发音", use_container_width=True):
+                    play_audio(data['word'])
 
-    elif mode == "Review":
-        due_list = [w for w in progress if progress[w]['next_review'] < time.time()]
-        if not due_list: st.info("🎉 No reviews pending.")
-        else:
-            w_str = due_list[0]
-            row = None
-            for sheet in sheets_data.values():
-                if w_str in sheet['单词 (Word)'].values:
-                    row = sheet[sheet['单词 (Word)'] == w_str].iloc[0]
-                    break
-            
-            if row is not None:
-                st.markdown(f"<h1 style='text-align:center;'>{w_str}</h1>", unsafe_allow_html=True)
-                with st.expander("Show Meaning"): st.info(row['中文 (Meaning)'])
+                # 含义
+                st.markdown(f"""
+                <div class="meaning-box">
+                    <span class="meaning-text">{data.get('meaning', '')}</span>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("❌ Forgot", use_container_width=True):
-                        update_user_progress(username, w_str, 1, get_next_review_time(1))
-                        st.rerun()
-                with c2:
-                    if st.button("✅ Remember", use_container_width=True):
-                        nl = progress[w_str]['level'] + 1
-                        update_user_progress(username, w_str, nl, get_next_review_time(nl))
-                        st.rerun()
+                # 脑洞
+                if data.get('mnemonic'):
+                    st.markdown(f"""
+                    <div class="brain-capsule">
+                        <span class="brain-tag">🧠 脑洞记忆</span>
+                        <span class="brain-text">{data['mnemonic']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # 例句
+                st.markdown("### 📚 场景例句")
+                for sent in data.get('sentences', []):
+                    st.markdown(f"""
+                    <div class="sent-row">
+                        <span class="sent-en">{sent['en']}</span>
+                        <span class="sent-cn">{sent['cn']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # 加入学习计划按钮
+                if st.button("⭐ 加入我的复习计划", type="primary", use_container_width=True):
+                    # 存入用户个人进度表
+                    db.users.update_one(
+                        {"_id": username},
+                        {"$set": {f"progress.{data['word']}": {"level": 0, "next_review": 0}}} # 0表示立即复习
+                    )
+                    st.toast(f"✅ 已添加 {data['word']}，请去复习板块查看！")
             else:
-                 update_user_progress(username, w_str, 0, 0)
-                 st.rerun()
+                st.error("抱歉，未找到该单词或 AI 暂时繁忙。")
+
+    # --- 模块2: 沉浸复习 (Review Mode - 百词斩风) ---
+    elif menu == "🧠 沉浸复习":
+        # 获取需要复习的词
+        user_doc = db.users.find_one({"_id": username})
+        progress = user_doc.get("progress", {})
+        
+        # 筛选出 next_review < now 的词
+        now = time.time()
+        due_words = [w for w, info in progress.items() if info['next_review'] < now]
+        
+        if not due_words:
+            st.balloons()
+            st.success("🎉 太棒了！今日复习任务已清空！")
+            st.info("快去【极速查词】添加几个新词吧！")
+        else:
+            # 随机取一个词复习
+            # 使用 Session State 保持当前复习的词，防止刷新变卦
+            if 'current_review_word' not in st.session_state or st.session_state['current_review_word'] not in due_words:
+                st.session_state['current_review_word'] = random.choice(due_words)
+                st.session_state['show_answer'] = False # 默认不看答案
+            
+            w_str = st.session_state['current_review_word']
+            
+            # 从公共库拿详情
+            word_data = db.library.find_one({"word": w_str})
+            
+            # --- 界面 ---
+            st.markdown(f"<div style='text-align:center; margin-top:50px;'><h1 style='font-size:3.5rem;'>{w_str}</h1></div>", unsafe_allow_html=True)
+            
+            if st.button("🔊", key="review_audio"): play_audio(w_str)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if not st.session_state['show_answer']:
+                # 遮挡状态
+                if st.button("👁️ 查看答案", type="primary", use_container_width=True):
+                    st.session_state['show_answer'] = True
+                    st.rerun()
+            else:
+                # 显示答案状态
+                if word_data:
+                    st.markdown(f"""
+                    <div class="meaning-box" style="text-align:center;">
+                        <span class="meaning-text">{word_data.get('meaning')}</span>
+                    </div>
+                    <div class="brain-capsule">
+                        <span class="brain-tag">🧠 助记</span>
+                        <span class="brain-text">{word_data.get('mnemonic', '暂无')}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 评级按钮
+                    st.markdown("#### 你记得怎么样？")
+                    c1, c2, c3 = st.columns(3)
+                    
+                    current_level = progress[w_str].get('level', 0)
+                    
+                    with c1:
+                        if st.button("🔴 忘了", use_container_width=True):
+                            # 忘了 -> 重置等级
+                            new_level = 0
+                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": new_level, "next_review": get_next_review_time(new_level)}}})
+                            st.session_state['show_answer'] = False
+                            del st.session_state['current_review_word'] # 移除当前词，换下一个
+                            st.rerun()
+                    
+                    with c2:
+                        if st.button("🟡 模糊", use_container_width=True):
+                            # 模糊 -> 等级不变或微升
+                            new_level = max(1, current_level)
+                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": new_level, "next_review": get_next_review_time(new_level)}}})
+                            st.session_state['show_answer'] = False
+                            del st.session_state['current_review_word']
+                            st.rerun()
+                            
+                    with c3:
+                        if st.button("🟢 简单", use_container_width=True):
+                            # 简单 -> 升级
+                            new_level = current_level + 1
+                            db.users.update_one({"_id": username}, {"$set": {f"progress.{w_str}": {"level": new_level, "next_review": get_next_review_time(new_level)}}})
+                            st.session_state['show_answer'] = False
+                            del st.session_state['current_review_word']
+                            st.rerun()
+
+    # --- 模块3: 数据中心 ---
+    elif menu == "📊 数据中心":
+        st.title("📊 学习统计")
+        user_doc = db.users.find_one({"_id": username})
+        prog = user_doc.get("progress", {})
+        
+        total = len(prog)
+        mastered = len([k for k,v in prog.items() if v['level'] > 3])
+        
+        c1, c2 = st.columns(2)
+        c1.metric("累计生词", total)
+        c2.metric("熟练掌握", mastered)
+        
+        st.markdown("### 📈 记忆遗忘曲线")
+        st.caption("该图表将在积累更多数据后自动生成")
