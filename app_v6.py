@@ -4,15 +4,15 @@ import time
 import datetime
 import json
 import random
-import hashlib  # ✅ 补上了这个关键工具！
-import os       # ✅ 补上了操作系统工具
+import hashlib
+import os
 from gtts import gTTS
 from io import BytesIO
 import pymongo
 from openai import OpenAI
 
 # --- 0. 全局配置 & 页面初始化 ---
-st.set_page_config(page_title="Luna Pro V14", page_icon="💎", layout="centered")
+st.set_page_config(page_title="Luna Pro V14.2", page_icon="💎", layout="centered")
 
 # 强制生成浅色配置文件
 if not os.path.exists(".streamlit"):
@@ -91,16 +91,18 @@ def get_ai_client():
 
 ai_client = get_ai_client()
 
-# --- 3. 核心逻辑：智能数据获取 ---
+# --- 3. 核心逻辑：智能数据获取 (修复了报错点) ---
 def smart_fetch_word_data(word):
     db = get_db()
-    if not db: return None
+    # 🔴 修复点：必须用 is None 判断，不能用 if not db
+    if db is None: return None
     
+    # 1. 查缓存
     cached_word = db.library.find_one({"word": word.lower().strip()})
-    
     if cached_word:
         return cached_word
     
+    # 2. AI 生成
     if ai_client:
         prompt = f"""
         请生成单词 "{word}" 的学习卡片 JSON 数据。
