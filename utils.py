@@ -13,14 +13,17 @@ import os
 def local_css():
     st.markdown("""
     <style>
+    /* 强制亮色背景 */
     [data-testid="stAppViewContainer"] { background-color: #F3F4F6 !important; }
     [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
     
+    /* 全局文字深色 */
     h1, h2, h3, h4, h5, h6, p, div, span, label, li, button { 
         color: #111827 !important; 
         font-family: sans-serif; 
     }
     
+    /* 修复输入框变黑 */
     div[data-baseweb="input"] {
         background-color: #FFFFFF !important;
         border: 1px solid #D1D5DB !important;
@@ -32,6 +35,7 @@ def local_css():
         caret-color: #000000 !important;
     }
     
+    /* 修复下拉菜单 */
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -41,6 +45,7 @@ def local_css():
     li[role="option"] { color: #111827 !important; background-color: #FFFFFF !important; }
     li[role="option"]:hover { background-color: #E0E7FF !important; }
 
+    /* 按钮 */
     button[kind="primary"] {
         background-color: #4F46E5 !important;
         color: #FFFFFF !important;
@@ -52,6 +57,7 @@ def local_css():
         border: 1px solid #D1D5DB !important;
     }
 
+    /* 卡片 */
     .word-card {
         background-color: #FFFFFF !important;
         padding: 30px;
@@ -99,24 +105,38 @@ def smart_fetch(word_input):
         query = raw_input.lower()
         try:
             cached = db.library.find_one({"word": query})
-            if cached and 'roots' in cached and 'sentences' in cached: return cached
+            # 如果缓存有 sentences，直接用
+            if cached and 'sentences' in cached: return cached
         except: pass
     
     ai = get_ai_client()
     if ai:
         try:
+            # 🔥 省钱核心：1句造句 + 1个搭配(带中文)
             prompt = f"""
             Task: Generate JSON for "{raw_input}".
             1. If input is Chinese, translate to English first.
-            2. "word" field MUST be English.
+            2. "word": English word.
             3. "meaning": Single string of Chinese meaning.
-            4. "roots": Root explanation.
-            5. "collocations": 3 English phrases.
+            4. "roots": Root explanation in Chinese.
+            5. "collocations": List of 1 common phrase with Chinese translation (e.g. "go home (回家)").
             6. "mnemonic": Funny memory trick.
             7. "category": Category.
-            8. "sentences": 3 sentences (Child -> Daily -> Business).
+            8. "sentences": List of 1 very simple sentence (Child level).
             
-            Return strictly JSON.
+            Format:
+            {{
+                "word": "EnglishWord",
+                "phonetic": "IPA",
+                "meaning": "Chinese Meaning",
+                "roots": "Root explanation",
+                "collocations": ["phrase (cn)"],
+                "mnemonic": "Trick",
+                "category": "Category",
+                "sentences": [
+                    {{"en": "Simple sentence.", "cn": "Translation."}}
+                ]
+            }}
             """
             
             resp = ai.chat.completions.create(
@@ -132,7 +152,6 @@ def smart_fetch(word_input):
             db.library.update_one({"word": final_word.lower()}, {"$set": data}, upsert=True)
             return data
         except Exception as e:
-            print(f"AI Error: {e}")
             return None
     return None
 
