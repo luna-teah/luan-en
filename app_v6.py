@@ -4,16 +4,16 @@ import time
 import datetime
 import json
 import random
-import hashlib
+import hashlib  # ✅ 修复1：补上了这个工具，解决 NameError
 import os
-import secrets
+import secrets  # ✅ 修复2：补上了令牌工具
 from gtts import gTTS
 from io import BytesIO
 import pymongo
 from openai import OpenAI
 
 # --- 0. 全局配置 ---
-st.set_page_config(page_title="Luna Pro V15", page_icon="💎", layout="wide") # 宽屏布局更像桌面软件
+st.set_page_config(page_title="Luna Pro V14.5", page_icon="💎", layout="wide") # 宽屏模式
 
 # 强制配置文件
 if not os.path.exists(".streamlit"):
@@ -21,60 +21,45 @@ if not os.path.exists(".streamlit"):
 with open(".streamlit/config.toml", "w") as f:
     f.write('[theme]\nbase="light"\nprimaryColor="#4F46E5"\nbackgroundColor="#F3F4F6"\nsecondaryBackgroundColor="#FFFFFF"\ntextColor="#1F2937"\nfont="sans serif"\n')
 
-# --- 1. 🎨 CSS 颜值革命 (Notion/现代风) ---
+# --- 1. CSS 美化 ---
 def local_css():
     st.markdown("""
     <style>
-    /* 全局优化 */
+    header {visibility: hidden;}
     .stApp { background-color: #F3F4F6; }
-    header { visibility: hidden; }
     
-    /* 首页大卡片 */
+    /* 卡片通用样式 */
     .nav-card {
         background: white; border-radius: 16px; padding: 24px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        text-align: center; border: 1px solid #E5E7EB;
-        transition: all 0.2s; cursor: pointer; height: 100%;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center;
+        border: 1px solid #E5E7EB; transition: all 0.2s; cursor: pointer;
     }
-    .nav-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: #4F46E5; }
-    .nav-emoji { font-size: 3rem; margin-bottom: 12px; display: block; }
-    .nav-title { font-size: 1.25rem; font-weight: 700; color: #111827; margin-bottom: 8px; }
-    .nav-desc { font-size: 0.9rem; color: #6B7280; }
-
-    /* 单词学习卡 */
-    .study-card {
-        background: white; border-radius: 24px; padding: 40px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-        text-align: center; margin: 0 auto; max-width: 700px;
-        border: 1px solid #E5E7EB;
-    }
-    .word-main { font-size: 4rem; font-weight: 800; color: #111827; letter-spacing: -0.025em; line-height: 1; margin-bottom: 10px; }
-    .word-pho { font-family: 'Georgia', serif; font-size: 1.5rem; color: #6B7280; font-style: italic; margin-bottom: 24px; }
+    .nav-card:hover { transform: translateY(-3px); border-color: #4F46E5; box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
     
-    /* 含义与脑洞 */
-    .info-section { text-align: left; margin-top: 30px; background: #F9FAFB; padding: 20px; border-radius: 12px; }
-    .info-title { font-size: 0.85rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .word-card {
+        background: white; border-radius: 20px; padding: 40px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center;
+        margin: 0 auto; max-width: 800px; border: 1px solid #E5E7EB;
+    }
+    .big-word { font-size: 3.5rem; font-weight: 800; color: #111827; margin-bottom: 10px; }
+    .phonetic { font-family: 'Georgia', serif; font-size: 1.4rem; color: #6B7280; font-style: italic; margin-bottom: 20px; }
+    
+    .info-box { text-align: left; background: #F9FAFB; padding: 20px; border-radius: 12px; margin-top: 20px; }
+    .info-title { font-size: 0.8rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; margin-bottom: 5px; }
     .info-content { font-size: 1.2rem; color: #374151; font-weight: 500; }
     
-    .brain-section { 
-        text-align: left; margin-top: 16px; 
-        background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%); 
+    .brain-box { 
+        text-align: left; margin-top: 15px; background: #EEF2FF; 
         padding: 20px; border-radius: 12px; border-left: 4px solid #4F46E5;
     }
-    .brain-text { color: #4338CA; font-size: 1.1rem; font-weight: 500; }
-
-    /* 标签药丸 */
-    .tag { display: inline-block; background: #E5E7EB; color: #374151; padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; margin-right: 6px; margin-bottom: 6px; }
-    .tag-cat { background: #DCFCE7; color: #166534; }
+    .brain-text { color: #4338CA; font-size: 1.1rem; }
     
-    /* 统计条 */
-    .stat-bar { height: 8px; background: #E5E7EB; border-radius: 4px; overflow: hidden; margin-top: 8px; }
-    .stat-fill { height: 100%; background: #4F46E5; }
+    .tag { display: inline-block; background: #E5E7EB; color: #374151; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-right: 5px; }
     </style>
     """, unsafe_allow_html=True)
 local_css()
 
-# --- 2. 核心连接 ---
+# --- 2. 连接服务 ---
 @st.cache_resource
 def init_mongo():
     try: return pymongo.MongoClient(st.secrets["mongo"]["connection_string"])
@@ -90,79 +75,7 @@ def get_ai_client():
 
 ai_client = get_ai_client()
 
-# --- 3. 智能逻辑 (含场景生成) ---
-def smart_fetch_word(word_input, mode="word"):
-    db = get_db()
-    if db is None: return None
-    
-    # 清洗输入
-    query = word_input.strip()
-    
-    # 模式A: 单个单词查询 (Word Mode)
-    # 先查库
-    cached = db.library.find_one({"word": query.lower()})
-    if cached: return cached
-    
-    # AI 生成
-    if ai_client:
-        prompt = f"""
-        请生成单词 "{query}" 的 JSON 数据。
-        Schema: {{
-            "word": "英文单词",
-            "phonetic": "音标",
-            "meaning": "中文含义(商务/外贸优先)",
-            "category": "所属分类(例如: 商务/生活/物流/合同)",
-            "mnemonic": "好记的中文脑洞/谐音梗",
-            "sentences": [{{"en": "英文句", "cn": "中文翻译"}}, ...5句]
-        }}
-        仅返回JSON。
-        """
-        try:
-            resp = ai_client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=1.1,
-                response_format={ "type": "json_object" }
-            )
-            data = json.loads(resp.choices[0].message.content)
-            data['word'] = data['word'].lower()
-            # 存入数据库
-            db.library.update_one({"word": data['word']}, {"$set": data}, upsert=True)
-            return data
-        except Exception as e:
-            st.error(f"AI Error: {e}")
-            return None
-    return None
-
-def smart_batch_generate(topic):
-    # 模式B: 场景批量生成 (Topic Mode)
-    if ai_client:
-        prompt = f"""
-        我是一个外贸业务员。请围绕主题 "{topic}"，推荐 10 个最核心的英文单词。
-        返回一个纯 JSON 字符串数组，例如: ["word1", "word2", ...]
-        不要返回任何其他解释。
-        """
-        try:
-            resp = ai_client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={ "type": "json_object" } # DeepSeek有时候需要明确指示
-            )
-            # 处理可能的格式差异，这里尝试解析列表
-            content = resp.choices[0].message.content
-            # 兼容处理：如果返回的是 { "words": [...] }
-            try:
-                data = json.loads(content)
-                if isinstance(data, list): words = data
-                elif isinstance(data, dict): words = list(data.values())[0]
-                else: words = []
-            except: return []
-            
-            return [w.lower() for w in words if isinstance(w, str)]
-        except: return []
-    return []
-
-# --- 4. 辅助函数 ---
+# --- 3. 核心功能 ---
 def make_hashes(p): return hashlib.sha256(str.encode(p)).hexdigest()
 def check_hashes(p, h): return make_hashes(p) == h
 def play_audio(text):
@@ -174,276 +87,227 @@ def get_next_time(lvl):
     intervals = [0, 86400, 259200, 604800, 1296000, 2592000]
     return time.time() + (intervals[lvl] if lvl < len(intervals) else 2592000)
 
-# --- 5. 登录/自动登录 ---
+# --- 智能查词 ---
+def smart_fetch(word):
+    db = get_db()
+    if db is None: return None # ✅ 修复3：解决 NotImplementedError
+    
+    cached = db.library.find_one({"word": word.lower().strip()})
+    if cached: return cached
+    
+    if ai_client:
+        try:
+            prompt = f"""
+            请生成单词 "{word}" 的JSON数据:
+            {{
+                "word": "单词", "phonetic": "音标", "meaning": "含义(商务优先)",
+                "category": "分类(如:商务/物流)", "mnemonic": "脑洞记忆法",
+                "sentences": [{{"en":"英文","cn":"中文"}},...] (5句)
+            }}
+            """
+            resp = ai_client.chat.completions.create(
+                model="deepseek-chat", messages=[{"role":"user","content":prompt}], 
+                temperature=1.1, response_format={"type":"json_object"}
+            )
+            data = json.loads(resp.choices[0].message.content)
+            data['word'] = data['word'].lower().strip()
+            db.library.update_one({"word": data['word']}, {"$set": data}, upsert=True)
+            return data
+        except Exception as e:
+            # ✅ 修复4：优雅处理余额不足
+            if "Insufficient Balance" in str(e) or "402" in str(e):
+                st.warning("⚠️ AI 余额不足，无法自动生成。请充值 DeepSeek。")
+            else:
+                st.error(f"AI Error: {e}")
+            return None
+    return None
+
+# --- 批量生成 ---
+def batch_gen(topic):
+    if not ai_client: return []
+    try:
+        prompt = f"列出10个关于'{topic}'的核心英文单词(数组格式)，只返回JSON数组。"
+        resp = ai_client.chat.completions.create(
+            model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"}
+        )
+        # 尝试解析
+        content = resp.choices[0].message.content
+        data = json.loads(content)
+        if isinstance(data, dict): return list(data.values())[0] # 兼容 {"words": [...]}
+        return data if isinstance(data, list) else []
+    except: return []
+
+# --- 4. 登录系统 ---
 if 'logged_in' not in st.session_state:
-    st.session_state.update({'logged_in': False, 'username': '', 'menu': 'Home'})
+    st.session_state.update({'logged_in': False, 'user': '', 'menu': 'Home'})
 
 # 自动登录
 if not st.session_state['logged_in']:
     try:
         token = st.query_params.get("token")
         if token and get_db() is not None:
-            user = get_db().users.find_one({"session_token": token})
-            if user:
-                st.session_state.update({'logged_in': True, 'username': user['_id']})
+            u = get_db().users.find_one({"session_token": token})
+            if u: st.session_state.update({'logged_in': True, 'user': u['_id']})
     except: pass
 
 def login_page():
-    c1, c2, c3 = st.columns([1,2,1])
-    with c2:
-        st.markdown("<br><h1 style='text-align:center;'>💎 Luna Pro V15</h1>", unsafe_allow_html=True)
-        tab1, tab2 = st.tabs(["Login", "Sign Up"])
-        db = get_db()
-        with tab1:
-            u = st.text_input("Username", key="l_u")
-            p = st.text_input("Password", type="password", key="l_p")
-            if st.button("🚀 Login", use_container_width=True):
-                if db is not None:
-                    user = db.users.find_one({"_id": u})
-                    if user and check_hashes(p, user['password']):
-                        token = secrets.token_hex(16)
-                        db.users.update_one({"_id": u}, {"$set": {"session_token": token}})
-                        st.query_params["token"] = token
-                        st.session_state.update({'logged_in': True, 'username': u})
-                        st.rerun()
-                    else: st.error("Invalid credentials")
-                else: st.error("DB Error")
-        with tab2:
-            nu = st.text_input("New Username", key="r_u")
-            np = st.text_input("New Password", type="password", key="r_p")
-            if st.button("✨ Create Account", use_container_width=True):
-                if db is not None and nu and np:
-                    if not db.users.find_one({"_id": nu}):
-                        db.users.insert_one({"_id": nu, "password": make_hashes(np), "progress": {}, "stats": {"streak": 0}})
-                        st.success("Success! Please login.")
-                    else: st.warning("Username taken")
+    st.markdown("<br><br><h1 style='text-align:center;color:#4F46E5'>💎 Luna Pro V15</h1>", unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["登录", "注册"])
+    db = get_db()
+    with tab1:
+        u = st.text_input("用户名", key="l1")
+        p = st.text_input("密码", type="password", key="l2")
+        if st.button("🚀 登录", use_container_width=True):
+            if db is not None:
+                user = db.users.find_one({"_id": u})
+                if user and check_hashes(p, user['password']):
+                    token = secrets.token_hex(16)
+                    db.users.update_one({"_id": u}, {"$set": {"session_token": token}})
+                    st.query_params["token"] = token
+                    st.session_state.update({'logged_in': True, 'user': u})
+                    st.rerun()
+                else: st.error("密码错误")
+            else: st.error("数据库连接失败 (请检查IP白名单)")
+    with tab2:
+        nu = st.text_input("新用户名", key="r1")
+        np = st.text_input("设置密码", type="password", key="r2")
+        if st.button("✨ 注册", use_container_width=True):
+            if db is not None and nu and np:
+                if not db.users.find_one({"_id": nu}):
+                    db.users.insert_one({"_id": nu, "password": make_hashes(np), "progress": {}})
+                    st.success("注册成功！")
+                else: st.warning("用户已存在")
 
-# --- 6. 主程序 ---
+# --- 5. 主程序 ---
 if not st.session_state['logged_in']:
     login_page()
 else:
-    user = st.session_state['username']
+    user = st.session_state['user']
     db = get_db()
     
-    # 顶部导航栏
-    c_logo, c_nav, c_user = st.columns([2, 6, 2])
-    with c_logo:
-        st.markdown(f"### 💎 Luna Pro")
-    with c_user:
-        if st.button("🚪 退出"):
+    # 顶部栏
+    c1, c2 = st.columns([8, 2])
+    with c1: st.markdown(f"### 👋 Hi, {user}")
+    with c2: 
+        if st.button("退出"):
             if db: db.users.update_one({"_id": user}, {"$set": {"session_token": ""}})
             st.query_params.clear()
             st.session_state.clear()
             st.rerun()
-
     st.divider()
 
-    # 路由控制
-    if 'menu' not in st.session_state: st.session_state['menu'] = 'Home'
-    
-    # --- 🏠 首页大厅 ---
+    # 路由
     if st.session_state['menu'] == 'Home':
-        st.markdown(f"<h2 style='text-align:center;'>👋 Hi, {user}! 今天想做什么？</h2><br>", unsafe_allow_html=True)
-        
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.markdown("""
-            <div class="nav-card">
-                <span class="nav-emoji">⚡</span>
-                <div class="nav-title">学习新词</div>
-                <div class="nav-desc">按分类学习 · 自动排除已学</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Go Learn", key="btn_learn", use_container_width=True):
-                st.session_state['menu'] = 'Learn'
-                st.rerun()
-                
+            st.markdown("<div class='nav-card'><h3>⚡ 学习新词</h3><p>按分类学习 · 排除已学</p></div>", unsafe_allow_html=True)
+            if st.button("Go Learn", use_container_width=True): st.session_state['menu']='Learn'; st.rerun()
         with c2:
-            st.markdown("""
-            <div class="nav-card">
-                <span class="nav-emoji">🧠</span>
-                <div class="nav-title">智能复习</div>
-                <div class="nav-desc">艾宾浩斯算法 · 巩固记忆</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Go Review", key="btn_review", use_container_width=True):
-                st.session_state['menu'] = 'Review'
-                st.rerun()
-                
+            st.markdown("<div class='nav-card'><h3>🧠 智能复习</h3><p>艾宾浩斯算法</p></div>", unsafe_allow_html=True)
+            if st.button("Go Review", use_container_width=True): st.session_state['menu']='Review'; st.rerun()
         with c3:
-            st.markdown("""
-            <div class="nav-card">
-                <span class="nav-emoji">🚀</span>
-                <div class="nav-title">扩充词库</div>
-                <div class="nav-desc">输入场景/单词 · AI 批量生成</div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("Go Add", key="btn_add", use_container_width=True):
-                st.session_state['menu'] = 'Add'
-                st.rerun()
+            st.markdown("<div class='nav-card'><h3>🚀 扩充词库</h3><p>AI 批量生成场景词</p></div>", unsafe_allow_html=True)
+            if st.button("Go Add", use_container_width=True): st.session_state['menu']='Add'; st.rerun()
 
-    # --- ⚡ 学习模式 (分类筛选) ---
     elif st.session_state['menu'] == 'Learn':
-        col_back, col_title = st.columns([1, 8])
-        with col_back:
-            if st.button("⬅️ 返回"):
-                st.session_state['menu'] = 'Home'
-                st.rerun()
-        with col_title: st.title("⚡ 学习新词")
-
-        # 1. 获取所有词和分类
+        if st.button("⬅️ 返回"): st.session_state['menu']='Home'; st.rerun()
+        st.title("⚡ 学习新词")
+        
         all_words = list(db.library.find({}))
-        # 统计分类
-        categories = list(set([w.get('category', '未分类') for w in all_words]))
-        if '未分类' not in categories: categories.append('未分类')
+        cats = list(set([w.get('category','未分类') for w in all_words]))
+        sel_cat = st.selectbox("选择分类", ["全部"] + cats)
         
-        # 2. 选择分类
-        selected_cat = st.selectbox("📂 选择单词分类", ["全部"] + categories)
+        u_prog = db.users.find_one({"_id": user}).get('progress', {})
+        pool = [w for w in all_words if (sel_cat=="全部" or w.get('category')==sel_cat) and w['word'] not in u_prog]
         
-        # 3. 过滤逻辑：该分类下 & 未学过(not in progress)
-        user_progress = db.users.find_one({"_id": user}).get('progress', {})
-        
-        pool = []
-        for w in all_words:
-            w_cat = w.get('category', '未分类')
-            if selected_cat == "全部" or selected_cat == w_cat:
-                if w['word'] not in user_progress: # 只要没学过
-                    pool.append(w)
-        
-        st.caption(f"当前分类剩余: {len(pool)} 个生词")
-        st.progress(0 if len(all_words)==0 else (len(all_words)-len(pool))/len(all_words))
+        st.progress((len(all_words)-len(pool))/len(all_words) if all_words else 0)
         
         if not pool:
-            st.success("🎉 该分类下的单词已全部学完！去选别的类吧。")
+            st.success("🎉 该分类已学完！")
         else:
-            # 每次取第一个
             w_data = pool[0]
-            
-            # --- 渲染卡片 ---
             st.markdown(f"""
-            <div class="study-card">
-                <div class="word-main">{w_data['word']}</div>
-                <div class="word-pho">/{w_data.get('phonetic', '...')}/</div>
-                <div>
-                    <span class="tag tag-cat">{w_data.get('category', 'General')}</span>
-                </div>
-                
-                <div class="info-section">
+            <div class="word-card">
+                <div class="big-word">{w_data['word']}</div>
+                <div class="phonetic">/{w_data.get('phonetic','...')}/</div>
+                <span class="tag">{w_data.get('category','General')}</span>
+                <div class="info-box">
                     <div class="info-title">MEANING</div>
                     <div class="info-content">{w_data.get('meaning')}</div>
                 </div>
-                
-                {'<div class="brain-section"><div class="brain-text">🧠 ' + w_data['mnemonic'] + '</div></div>' if w_data.get('mnemonic') else ''}
+                {'<div class="brain-box"><div class="brain-text">🧠 '+w_data['mnemonic']+'</div></div>' if w_data.get('mnemonic') else ''}
             </div>
             """, unsafe_allow_html=True)
             
             c1, c2, c3 = st.columns([1,2,1])
             with c2:
                 st.write("")
-                if st.button("🔊 播放发音", use_container_width=True):
-                    play_audio(w_data['word'])
-                
+                if st.button("🔊 播放", use_container_width=True): play_audio(w_data['word'])
                 st.markdown("---")
-                if st.button("✅ 我学会了", type="primary", use_container_width=True):
-                    # 存入进度 level 1
-                    db.users.update_one(
-                        {"_id": user},
-                        {"$set": {f"progress.{w_data['word']}": {"level": 1, "next_review": get_next_time(1)}}}
-                    )
+                if st.button("✅ 学会了", type="primary", use_container_width=True):
+                    db.users.update_one({"_id": user}, {"$set": {f"progress.{w_data['word']}": {"level": 1, "next_review": get_next_time(1)}}})
                     st.rerun()
 
-    # --- 🚀 扩充词库 (场景生成) ---
     elif st.session_state['menu'] == 'Add':
-        col_back, col_title = st.columns([1, 8])
-        with col_back:
-            if st.button("⬅️ 返回"):
-                st.session_state['menu'] = 'Home'
-                st.rerun()
-        with col_title: st.title("🚀 智能扩词")
+        if st.button("⬅️ 返回"): st.session_state['menu']='Home'; st.rerun()
+        st.title("🚀 智能扩词")
         
-        tab_word, tab_topic = st.tabs(["查单词", "🔮 按场景批量生成"])
+        t1, t2 = st.tabs(["查单词", "批量生成"])
+        with t1:
+            nw = st.text_input("输入单词回车", key="search")
+            if nw:
+                with st.spinner("AI thinking..."):
+                    d = smart_fetch(nw)
+                if d: st.success(f"✅ {d['word']} 已入库！"); st.json(d, expanded=False)
         
-        with tab_word:
-            new_word = st.text_input("输入单词 (回车自动查)", placeholder="例如: invoice")
-            if new_word:
-                with st.spinner("AI 正在分析..."):
-                    data = smart_fetch_word(new_word)
-                if data:
-                    st.success(f"✅ [{data['word']}] 已入库！分类: {data.get('category')}")
-                    # 显示一下刚才查的
-                    st.json(data, expanded=False)
-        
-        with tab_topic:
-            st.info("💡 输入一个场景，AI 会自动为你推荐并生成 10 个相关单词入库。")
-            topic = st.text_input("输入场景 (例如: 机场 / 谈判 / 或者是'骂人的话')", placeholder="例如: 国际物流")
-            if st.button("✨ 开始生成 (耗时约10秒)", type="primary"):
+        with t2:
+            topic = st.text_input("输入场景 (如: 机场)", key="topic")
+            if st.button("✨ 生成", type="primary"):
                 if not topic: st.warning("请输入场景")
                 else:
-                    with st.status("🤖 AI 正在工作中...") as status:
-                        status.write(f"正在思考 [{topic}] 相关的核心词汇...")
-                        word_list = smart_batch_generate(topic)
-                        status.write(f"找到 {len(word_list)} 个词: {', '.join(word_list)}")
-                        
-                        count = 0
-                        for w in word_list:
-                            status.write(f"正在生成详情: {w}...")
-                            smart_fetch_word(w) # 逐个生成并存库
-                            count += 1
-                        
-                        status.update(label="✅ 全部完成！", state="complete")
-                    
-                    st.balloons()
-                    st.success(f"🎉 成功添加 {count} 个单词到词库！快去【学习模式】查看吧！")
+                    with st.status("AI 正在生成...") as status:
+                        lst = batch_gen(topic)
+                        status.write(f"找到: {lst}")
+                        for w in lst:
+                            smart_fetch(w)
+                        status.update(label="完成！", state="complete")
+                    st.success(f"🎉 已添加 {len(lst)} 个词！")
 
-    # --- 🧠 复习模式 (保持 V14 逻辑) ---
     elif st.session_state['menu'] == 'Review':
-        col_back, col_title = st.columns([1, 8])
-        with col_back:
-            if st.button("⬅️ 返回"): st.session_state['menu'] = 'Home'; st.rerun()
-        with col_title: st.title("🧠 智能复习")
+        if st.button("⬅️ 返回"): st.session_state['menu']='Home'; st.rerun()
         
-        # ... (复习逻辑与之前相同，节省篇幅，这里复用核心逻辑) ...
-        # 获取复习词
-        user_doc = db.users.find_one({"_id": user})
-        progress = user_doc.get("progress", {})
-        now = time.time()
-        due = [w for w, info in progress.items() if info['next_review'] < now]
+        u_doc = db.users.find_one({"_id": user})
+        prog = u_doc.get("progress", {})
+        due = [w for w, i in prog.items() if i['next_review'] < time.time()]
         
         if not due:
-            st.balloons()
-            st.info("太棒了！所有单词都复习完了。")
+            st.balloons(); st.info("今日复习完成！")
         else:
-            if 'rev_w' not in st.session_state or st.session_state['rev_w'] not in due:
-                st.session_state['rev_w'] = random.choice(due)
+            if 'rw' not in st.session_state or st.session_state['rw'] not in due:
+                st.session_state['rw'] = random.choice(due)
                 st.session_state['show'] = False
             
-            w = st.session_state['rev_w']
-            data = db.library.find_one({"word": w}) or {}
+            w = st.session_state['rw']
+            d = db.library.find_one({"word": w}) or {}
             
             st.markdown(f"<div style='text-align:center;margin:40px;'><h1 style='font-size:4rem;'>{w}</h1></div>", unsafe_allow_html=True)
             
             if not st.session_state['show']:
                 if st.button("👁️ 查看答案", type="primary", use_container_width=True):
-                    st.session_state['show'] = True
-                    st.rerun()
+                    st.session_state['show'] = True; st.rerun()
             else:
-                st.markdown(f"<div style='text-align:center;font-size:1.5rem;color:#4F46E5;'>{data.get('meaning','')}</div>", unsafe_allow_html=True)
-                if data.get('mnemonic'):
-                    st.info(f"🧠 {data['mnemonic']}")
-                
+                st.info(f"{d.get('meaning')} \n\n 🧠 {d.get('mnemonic','')}")
                 c1, c2, c3 = st.columns(3)
-                curr_lvl = progress[w]['level']
+                lvl = prog[w]['level']
                 with c1:
                     if st.button("🔴 忘了"):
                         db.users.update_one({"_id": user}, {"$set": {f"progress.{w}": {"level": 0, "next_review": get_next_time(0)}}})
-                        st.session_state['show'] = False; del st.session_state['rev_w']; st.rerun()
+                        st.session_state['show']=False; del st.session_state['rw']; st.rerun()
                 with c2:
                     if st.button("🟢 记得"):
-                        nl = curr_lvl + 1
-                        db.users.update_one({"_id": user}, {"$set": {f"progress.{w}": {"level": nl, "next_review": get_next_time(nl)}}})
-                        st.session_state['show'] = False; del st.session_state['rev_w']; st.rerun()
+                        db.users.update_one({"_id": user}, {"$set": {f"progress.{w}": {"level": lvl+1, "next_review": get_next_time(lvl+1)}}})
+                        st.session_state['show']=False; del st.session_state['rw']; st.rerun()
                 with c3:
                     if st.button("🚀 太简单"):
-                        nl = curr_lvl + 2
-                        db.users.update_one({"_id": user}, {"$set": {f"progress.{w}": {"level": nl, "next_review": get_next_time(nl)}}})
-                        st.session_state['show'] = False; del st.session_state['rev_w']; st.rerun()
+                        db.users.update_one({"_id": user}, {"$set": {f"progress.{w}": {"level": lvl+2, "next_review": get_next_time(lvl+2)}}})
+                        st.session_state['show']=False; del st.session_state['rw']; st.rerun()
