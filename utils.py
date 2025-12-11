@@ -7,88 +7,85 @@ from io import BytesIO
 import datetime
 import json
 
-# --- 1. CSS 强力纠色 (V22.0 光之守卫版) ---
+# --- 1. CSS 强力漂白 (V23.0) ---
 def local_css():
     st.markdown("""
     <style>
-    /* === 全局强制：亮色模式基调 === */
+    /* === 全局强制：亮色模式 === */
     [data-testid="stAppViewContainer"] { background-color: #F3F4F6 !important; }
-    [data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
+    header { visibility: hidden; }
     
-    /* 强制所有文字颜色为深灰 (防止白底白字) */
-    .stApp, p, h1, h2, h3, h4, h5, h6, div, span, label, li {
+    /* 强制所有文字颜色 */
+    h1, h2, h3, h4, h5, h6, p, div, span, label, li {
         color: #111827 !important;
         font-family: sans-serif;
     }
 
-    /* === 🔴 重点修复：下拉菜单和输入框变黑的问题 === */
-    /* 输入框本体 */
-    .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
+    /* === 🔴 核心修复：彻底漂白输入框背景 === */
+    /* 针对所有文本输入框的外壳 */
+    div[data-baseweb="input"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 8px !important;
+    }
+    /* 针对输入框里面的文字区域 */
+    input[type="text"], input[type="password"] {
         background-color: #FFFFFF !important;
         color: #111827 !important;
-        border: 1px solid #D1D5DB !important;
     }
     
-    /* 下拉弹出的菜单列表 (修复 image_3a1f78.png 全黑问题) */
-    ul[data-baseweb="menu"] {
+    /* === 修复下拉菜单 === */
+    div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
-        border: 1px solid #E5E7EB !important;
-    }
-    /* 选项文字 */
-    li[role="option"] {
+        border: 1px solid #D1D5DB !important;
         color: #111827 !important;
-        background-color: #FFFFFF !important;
     }
-    /* 鼠标悬停/选中的选项 */
-    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
-        background-color: #E0E7FF !important; /* 浅紫色高亮 */
-        color: #4338CA !important;
-    }
+    /* 下拉选项列表 */
+    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; }
+    li[role="option"] { color: #111827 !important; }
+    li[role="option"]:hover { background-color: #E0E7FF !important; }
 
-    /* === 🔴 重点修复：按钮全黑的问题 (修复 image_4423e0.png) === */
-    /* 主按钮 (Primary) */
+    /* === 修复按钮 (告别全黑按钮) === */
+    /* 主按钮 (Primary) - 比如“登录”、“生成” */
     button[kind="primary"] {
-        background-color: #4F46E5 !important; /* 漂亮的紫色 */
-        color: #FFFFFF !important;
+        background-color: #4F46E5 !important;
+        color: white !important;
         border: none !important;
-        transition: 0.2s;
+        border-radius: 8px !important;
     }
     button[kind="primary"]:hover {
         background-color: #4338CA !important;
-        transform: scale(1.02);
     }
     
-    /* 次级按钮 (Secondary) */
-    button[kind="secondary"] {
+    /* 次级按钮 (Secondary) - 比如“退出”、“返回” */
+    button[kind="secondaryFormSubmit"], button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #1F2937 !important;
         border: 1px solid #D1D5DB !important;
+        border-radius: 8px !important;
     }
     button[kind="secondary"]:hover {
         border-color: #4F46E5 !important;
         color: #4F46E5 !important;
     }
 
-    /* === 导航卡片 === */
+    /* === 卡片样式 === */
     .nav-card {
         background: white !important; padding: 24px; border-radius: 16px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center;
-        border: 1px solid #E5E7EB; cursor: pointer; transition: all 0.2s;
-        height: 100%; display: flex; flex-direction: column; justify-content: center;
+        border: 1px solid #E5E7EB; cursor: pointer; transition: all 0.2s; height: 100%;
     }
-    .nav-card:hover { transform: translateY(-5px); border-color: #4F46E5; box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+    .nav-card:hover { transform: translateY(-5px); border-color: #4F46E5; }
     
-    /* === 学习卡片 === */
     .word-card {
-        background: white !important; border-radius: 20px; padding: 40px;
+        background: white !important; padding: 30px; border-radius: 20px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.08); text-align: center;
         border: 1px solid #E5E7EB; margin-bottom: 20px;
     }
     
-    /* 详情模块 */
     .meaning-box { background: #ECFDF5 !important; border-left: 5px solid #10B981 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left; }
     .brain-box { background: #EEF2FF !important; border-left: 5px solid #6366F1 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left; }
-    .tag-pill { background: #E5E7EB !important; color: #374151 !important; padding: 4px 12px; border-radius: 99px; display: inline-block; margin: 5px; font-size: 0.85rem; font-weight: 600;}
+    .tag-pill { background: #E5E7EB !important; color: #374151 !important; padding: 4px 12px; border-radius: 99px; font-size: 0.8rem; font-weight: 600; margin: 5px; display: inline-block;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -113,14 +110,20 @@ def get_ai_client():
 def smart_fetch(word):
     db = get_db()
     if db is None: return None
+    
     query = word.lower().strip()
-    cached = db.library.find_one({"word": query})
-    if cached and 'collocations' in cached: return cached # 有新字段才返回
+    # 查缓存
+    try:
+        cached = db.library.find_one({"word": query})
+        # 如果缓存数据完整，直接返回
+        if cached and 'roots' in cached and 'collocations' in cached:
+            return cached
+    except: pass
     
     ai = get_ai_client()
     if ai:
         try:
-            # 强制要求英文搭配和词根
+            # Prompt 保持最新：要求词根、英文搭配
             prompt = f"""
             Generate JSON for English word "{query}".
             Strict Schema:
@@ -138,6 +141,7 @@ def smart_fetch(word):
             data = json.loads(resp.choices[0].message.content)
             data['word'] = query
             data['created_at'] = datetime.datetime.now()
+            
             db.library.update_one({"word": query}, {"$set": data}, upsert=True)
             return data
         except: return None
