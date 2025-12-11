@@ -8,7 +8,7 @@ import datetime
 import time
 import json
 
-# --- 1. CSS 强力漂白 (保持 V23 不变) ---
+# --- 1. CSS 样式 ---
 def local_css():
     st.markdown("""
     <style>
@@ -26,8 +26,7 @@ def local_css():
 
     button[kind="primary"] { background-color: #4F46E5 !important; color: white !important; border: none !important; border-radius: 8px !important; }
     button[kind="primary"]:hover { background-color: #4338CA !important; }
-    button[kind="secondaryFormSubmit"], button[kind="secondary"] { background-color: #FFFFFF !important; color: #1F2937 !important; border: 1px solid #D1D5DB !important; border-radius: 8px !important; }
-    button[kind="secondary"]:hover { border-color: #4F46E5 !important; color: #4F46E5 !important; }
+    button[kind="secondary"] { background-color: #FFFFFF !important; color: #1F2937 !important; border: 1px solid #D1D5DB !important; border-radius: 8px !important; }
 
     .word-card { background: white !important; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); text-align: center; border: 1px solid #E5E7EB; margin-bottom: 20px; }
     .meaning-box { background: #ECFDF5 !important; border-left: 5px solid #10B981 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left; }
@@ -80,3 +79,41 @@ def smart_fetch(word):
             6. "mnemonic": Creative Chinese mnemonic
             7. "category": Classification
             8. "sentences": List of 3 sentences sorted by difficulty:
+               - **Sentence 1**: Very simple, short, daily life (Kindergarten level).
+               - **Sentence 2**: Medium difficulty (Daily work).
+               - **Sentence 3**: Business context (Professional but clear).
+               Each sentence object: {{ "en": "...", "cn": "..." }}
+            
+            Return JSON only.
+            """
+            resp = ai.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
+            data = json.loads(resp.choices[0].message.content)
+            data['word'] = query
+            data['created_at'] = datetime.datetime.now()
+            db.library.update_one({"word": query}, {"$set": data}, upsert=True)
+            return data
+        except: return None
+    return None
+
+def batch_gen(topic):
+    ai = get_ai_client()
+    if not ai: return []
+    try:
+        prompt = f"List 10 simple English words about '{topic}' for beginners, return JSON array ['word1', 'word2']"
+        resp = ai.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
+        data = json.loads(resp.choices[0].message.content)
+        if isinstance(data, dict): return list(data.values())[0]
+        return data if isinstance(data, list) else []
+    except: return []
+
+# --- 5. 辅助 ---
+def make_hashes(p): return hashlib.sha256(str.encode(p)).hexdigest()
+def check_hashes(p, h): return make_hashes(p) == h
+def play_audio(text):
+    try:
+        sound = BytesIO(); tts = gTTS(text=text, lang='en'); tts.write_to_fp(sound)
+        st.audio(sound, format='audio/mp3', start_time=0)
+    except: pass
+def get_next_time(lvl):
+    intervals = [0, 86400, 259200, 604800, 1296000, 2592000]
+    return time.time() + (intervals[lvl] if lvl < len(intervals) else 2592000)
