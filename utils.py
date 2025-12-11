@@ -7,45 +7,50 @@ from io import BytesIO
 import datetime
 import json
 
-# --- 1. CSS 动态美化 (支持自定义颜色) ---
-def set_style(text_color="#1F2937", bg_color="#F3F4F6"):
-    st.markdown(f"""
+# --- 1. CSS 强力纠色 (防止隐形文字) ---
+def local_css():
+    st.markdown("""
     <style>
-    /* 强制全局字体颜色 (用户自定义) */
-    html, body, [class*="css"], p, h1, h2, h3, div, span, label, li {{
-        color: {text_color} !important;
-        font-family: 'Helvetica Neue', sans-serif;
-    }}
+    /* 1. 强制全局所有文字为深黑色，无视系统主题 */
+    html, body, [class*="css"], .stApp, p, h1, h2, h3, div, span, label, li, button {
+        color: #111827 !important; 
+        font-family: sans-serif;
+    }
     
-    /* 背景颜色 */
-    .stApp {{ background-color: {bg_color}; }}
+    /* 2. 强制背景为浅灰 */
+    .stApp { background-color: #F3F4F6 !important; }
     
-    /* 修复输入框看不清 */
-    .stTextInput input, .stSelectbox div, .stNumberInput input {{
-        color: {text_color} !important;
+    /* 3. 修复输入框和下拉菜单看不见的问题 */
+    .stTextInput input, .stSelectbox div, .stNumberInput input {
+        color: #111827 !important;
         background-color: #FFFFFF !important;
-        border: 1px solid #D1D5DB;
-    }}
+        border: 1px solid #D1D5DB !important;
+    }
+    /* 下拉菜单选项颜色 */
+    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; }
+    li[role="option"] { color: #111827 !important; }
     
-    /* --- 卡片样式 (防止缩进导致的乱码) --- */
-    .word-card {{
-        background: white; padding: 30px; border-radius: 20px;
+    /* 4. 卡片样式 */
+    .word-card {
+        background: white !important; 
+        padding: 30px; border-radius: 20px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center;
         border: 1px solid #E5E7EB; margin-bottom: 20px;
-    }}
+    }
     
-    /* 模块容器 */
-    .info-container {{
-        text-align: left; margin-top: 15px; padding: 15px; border-radius: 10px;
-        font-size: 1.1rem; line-height: 1.6;
-    }}
+    /* 5. 导航卡片 */
+    .nav-card {
+        background: white !important; padding: 20px; border-radius: 15px;
+        border: 1px solid #ddd; text-align: center; cursor: pointer;
+        transition: 0.3s; height: 100%;
+    }
+    .nav-card:hover { border-color: #4F46E5; transform: translateY(-5px); }
     
-    .box-meaning {{ background: #ECFDF5; border-left: 5px solid #10B981; color: #065F46 !important; }}
-    .box-roots {{ background: #FFF7ED; border-left: 5px solid #F97316; color: #9A3412 !important; }}
-    .box-colloc {{ background: #F0F9FF; border-left: 5px solid #0EA5E9; color: #0C4A6E !important; }}
-    .box-mnem {{ background: #EEF2FF; border-left: 5px solid #6366F1; color: #4338CA !important; }}
+    /* 6. 详情模块颜色 */
+    .meaning-box { background: #ECFDF5 !important; border-left: 5px solid #10B981 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left;}
+    .brain-box { background: #EEF2FF !important; border-left: 5px solid #6366F1 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left;}
+    .roots-box { background: #FFF7ED !important; border-left: 5px solid #F97316 !important; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left;}
     
-    .label-head {{ font-weight: 800; font-size: 0.8rem; opacity: 0.8; text-transform: uppercase; display: block; margin-bottom: 5px; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -66,7 +71,7 @@ def get_ai_client():
     try: return OpenAI(api_key=st.secrets["deepseek"]["api_key"], base_url=st.secrets["deepseek"]["base_url"])
     except: return None
 
-# --- 4. 智能查词 (Prompt 升级) ---
+# --- 4. 智能查词 (Prompt 升级：英文组词+词根) ---
 def smart_fetch(word):
     db = get_db()
     if db is None: return None
@@ -74,25 +79,25 @@ def smart_fetch(word):
     query = word.lower().strip()
     cached = db.library.find_one({"word": query})
     
-    # 如果缓存里缺字段，强制重新生成
-    if cached and 'collocations' in cached and 'roots' in cached: 
+    # 如果缓存缺失重要字段，强制重查
+    if cached and 'roots' in cached and 'collocations' in cached:
         return cached
     
     ai = get_ai_client()
     if ai:
         try:
-            # 🔥 核心升级：要求英文搭配、词根、造句
+            # 🔥 这里的 Prompt 专门针对你的需求进行了修改
             prompt = f"""
-            Generate a JSON for English word "{query}".
-            Fields:
+            Generate JSON for English word "{query}".
+            Strict requirements:
             1. "word": "{query}"
-            2. "phonetic": IPA
-            3. "meaning": Chinese meaning (Business context)
-            4. "roots": Etymology/Roots explanation in Chinese (e.g. 'bene-好 + fit-做')
-            5. "collocations": List of 3 common **English phrases** (e.g. ['sign a contract', 'heavy rain'])
-            6. "mnemonic": Creative Chinese mnemonic
-            7. "category": Category
-            8. "sentences": List of 3 sentences (1 simple, 1 business, 1 complex). Each has "en" and "cn".
+            2. "phonetic": IPA symbol
+            3. "meaning": Chinese meaning (Business context preferred)
+            4. "roots": Explain etymology/roots in Chinese (e.g. 'bene-好 + fit-做')
+            5. "collocations": List of 3 common **English phrases** (Must be English! e.g. 'heavy rain', 'sign a contract')
+            6. "mnemonic": Chinese mnemonic
+            7. "category": Classification (Business/Daily/Tech)
+            8. "sentences": List of 3 example sentences. Each object has "en" and "cn".
             
             Return JSON only.
             """
@@ -102,7 +107,9 @@ def smart_fetch(word):
             data['created_at'] = datetime.datetime.now()
             db.library.update_one({"word": query}, {"$set": data}, upsert=True)
             return data
-        except: return None
+        except Exception as e:
+            print(e)
+            return None
     return None
 
 def batch_gen(topic):
