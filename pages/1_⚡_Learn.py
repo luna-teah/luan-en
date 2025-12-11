@@ -30,20 +30,30 @@ target_cat = sel.split(" (")[0] if "(" in sel else sel
 
 pool = [w for w in all_words if w['word'] not in u_prog and (target_cat=="All" or str(w.get('category','')).strip()==target_cat)]
 
+# --- 🧹 终极清洗函数 (修复AttributeError) ---
 def format_meaning(text):
-    if not text: return ""
-    text = str(text).strip()
-    if text.startswith("{") and "simple" in text:
+    if text is None: return "No meaning available"
+    
+    # 如果已经是字符串且包含字典格式
+    s_text = str(text).strip()
+    if s_text.startswith("{") and "simple" in s_text:
         try:
-            d = ast.literal_eval(text)
+            d = ast.literal_eval(s_text)
             return f"{d.get('simple','')}; {d.get('business','')}"
-        except: return text
-    return text
+        except: 
+            return s_text
+    
+    # 如果直接就是字典对象 (数据库直接读出来的)
+    if isinstance(text, dict):
+        return f"{text.get('simple','')}; {text.get('business','')}"
+        
+    return s_text
 
 if not pool:
     st.success("All words learned!")
 else:
     w_raw = pool[0]
+    # 自动修复旧数据
     if not w_raw.get('sentences') or len(w_raw.get('sentences')) < 3:
         w = utils.smart_fetch(w_raw['word']) or w_raw
     else:
