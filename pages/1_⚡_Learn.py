@@ -1,24 +1,22 @@
 import streamlit as st
 import utils
-import ast # 用于解析字典字符串
+import ast
 
 st.set_page_config(page_title="学习", layout="wide")
 utils.local_css()
 
 if 'logged_in' not in st.session_state or not st.session_state['logged_in']:
-    st.warning("请先登录")
     st.stop()
 
 user = st.session_state['username']
 db = utils.get_db()
 
-if st.button("⬅️ 返回主页"): st.switch_page("app_v6.py")
+if st.button("⬅️ 主页"): st.switch_page("app_v6.py")
 st.title("⚡ 学习新词")
 
 all_words = list(db.library.find({}))
 u_prog = db.users.find_one({"_id": user}).get('progress', {})
 
-# 分类去重
 cats = {}
 for w in all_words:
     if w['word'] not in u_prog:
@@ -27,41 +25,27 @@ for w in all_words:
 
 options = ["全部"] + [f"{k} ({v})" for k,v in cats.items()]
 sel = st.selectbox("📂 选择分类", options)
-
 target_cat = sel.split(" (")[0] if "(" in sel else sel
 
-pool = []
-for w in all_words:
-    if w['word'] not in u_prog:
-        w_cat = str(w.get('category', '未分类')).strip()
-        if target_cat == "全部" or w_cat == target_cat:
-            pool.append(w)
+pool = [w for w in all_words if w['word'] not in u_prog and (target_cat=="全部" or str(w.get('category','')).strip()==target_cat)]
 
-# --- 🧹 含义清洗函数 (修复乱码的核心) ---
 def format_meaning(text):
-    if not text: return "暂无含义"
-    # 如果检测到是字典格式 {'simple':...}
+    if not text: return ""
     if text.strip().startswith("{") and "simple" in text:
         try:
-            # 尝试把字符串变回字典
             d = ast.literal_eval(text)
-            # 拼接成好看的字符串
-            return f"{d.get('simple', '')}；{d.get('business', '')}"
-        except:
-            return text # 解析失败就原样返回
+            return f"{d.get('simple','')}; {d.get('business','')}"
+        except: return text
     return text
 
 if not pool:
     st.success("🎉 本分类已学完！")
 else:
-    # 强制刷新旧词逻辑
     w_raw = pool[0]
     if not w_raw.get('sentences') or len(w_raw.get('sentences')) < 3:
         w = utils.smart_fetch(w_raw['word']) or w_raw
-    else:
-        w = w_raw
+    else: w = w_raw
 
-    # === 卡片显示 ===
     st.markdown(f"""
     <div class="word-card">
         <h1 style="color:#4F46E5 !important; font-size:4rem; margin:0;">{w['word']}</h1>
@@ -70,76 +54,39 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # 播放按钮
-    c_audio, c_space = st.columns([2, 8])
+    c_audio, _ = st.columns([2, 8])
     with c_audio:
-        if st.button("🔊 单词发音", use_container_width=True, key="main_audio"): 
-            utils.play_audio(w['word'])
+        if st.button("🔊 单词发音", use_container_width=True): utils.play_audio(w['word'])
 
     c1, c2 = st.columns(2)
     with c1:
-        # ✅ 使用清洗函数处理含义
         clean_meaning = format_meaning(w.get('meaning'))
-        
-        st.markdown(f"""
-        <div class="meaning-box">
-            <div style="font-weight:bold; opacity:0.7;">📚 MEANING</div>
-            <div style="font-size:1.2rem; font-weight:bold;">{clean_meaning}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if w.get('roots'):
-            st.markdown(f"""
-            <div class="roots-box">
-                <div style="font-weight:bold; opacity:0.7;">🌱 ROOTS (词根)</div>
-                <div style="color:#C2410C;">{w['roots']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""<div class="meaning-box"><div style="font-weight:bold;opacity:0.7;">📚 MEANING</div><div style="font-size:1.2rem;font-weight:bold;">{clean_meaning}</div></div>""", unsafe_allow_html=True)
+        if w.get('roots'): st.markdown(f"""<div class="roots-box"><div style="font-weight:bold;opacity:0.7;">🌱 ROOTS</div><div>{w['roots']}</div></div>""", unsafe_allow_html=True)
 
     with c2:
         if w.get('collocations'):
             cols = "".join([f"<li>{c}</li>" for c in w['collocations']])
-            st.markdown(f"""
-            <div class="meaning-box" style="background:#F0F9FF !important; border-left:5px solid #0EA5E9 !important; color:#0C4A6E !important;">
-                <div style="font-weight:bold; opacity:0.7;">🔗 PHRASES (英文搭配)</div>
-                <ul style="margin:0; padding-left:20px;">{cols}</ul>
-            </div>
-            """, unsafe_allow_html=True)
-            
+            st.markdown(f"""<div class="meaning-box" style="background:#F0F9FF!important;border-left-color:#0EA5E9!important;color:#0C4A6E!important;"><div style="font-weight:bold;opacity:0.7;">🔗 PHRASES</div><ul style="margin:0;padding-left:20px;">{cols}</ul></div>""", unsafe_allow_html=True)
         if w.get('mnemonic'):
-            st.markdown(f"""
-            <div class="brain-box">
-                <div style="font-weight:bold; opacity:0.7;">🧠 TRICK (脑洞)</div>
-                <div>{w['mnemonic']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"""<div class="brain-box"><div style="font-weight:bold;opacity:0.7;">🧠 TRICK</div><div>{w['mnemonic']}</div></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 📖 阶梯例句 (由简入难)")
-    
-    labels = ["🌱 简单 (Simple)", "⛅ 日常 (Daily)", "💼 商务 (Business)"]
-    
+    st.markdown("#### 📖 阶梯例句")
+    labels = ["🌱 简单", "⛅ 日常", "💼 商务"]
     if w.get('sentences'):
         for i, s in enumerate(w['sentences']):
-            label = labels[i] if i < 3 else "📝 例句"
-            
-            # 分栏布局：左文右喇叭
-            col_text, col_btn = st.columns([8, 1])
-            with col_text:
-                st.markdown(f"""
-                <div style="background:white; border-left: 4px solid #E5E7EB; padding: 10px 15px; margin-bottom: 10px;">
-                    <div style="font-size:0.8rem; color:#9CA3AF; font-weight:bold; margin-bottom:4px;">{label}</div>
-                    <div style="font-size:1.1rem; color:#1F2937; margin-bottom:2px;">{s.get('en')}</div>
-                    <div style="font-size:0.9rem; color:#6B7280;">{s.get('cn')}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_btn:
-                st.write("")
-                st.write("")
-                if st.button("🔈", key=f"sent_tts_{i}"):
-                    utils.play_audio(s.get('en'))
+            label = labels[i] if i<3 else "例句"
+            c_t, c_b = st.columns([8,1])
+            with c_t: st.markdown(f"""<div style="background:white;border-left:4px solid #E5E7EB;padding:10px;"><div style="font-size:0.8rem;color:#999;font-weight:bold;">{label}</div><div style="font-size:1.1rem;margin-bottom:2px;">{s.get('en')}</div><div style="font-size:0.9rem;color:#666;">{s.get('cn')}</div></div>""", unsafe_allow_html=True)
+            with c_b: 
+                st.write(""); st.write("")
+                if st.button("🔈", key=f"s_{i}"): utils.play_audio(s.get('en'))
     
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("✅ 我学会了 (Next)", type="primary", use_container_width=True):
+        # 1. 更新进度
         db.users.update_one({"_id": user}, {"$set": {f"progress.{w['word']}": {"level": 1, "next_review": utils.get_next_time(1)}}})
+        # 2. 🔥 记录每日打卡
+        utils.update_daily_activity(user)
         st.rerun()
